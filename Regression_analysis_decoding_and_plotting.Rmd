@@ -1,0 +1,3071 @@
+---
+title: "PD_Fingerprinting"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(ggplot2)
+library(RColorBrewer)
+library("ggpubr")
+library(jtools)
+library(BayesFactor)
+library(corrplot)
+library(ggseg)
+
+cbbPalette <- c( "#90319D","#E25987","#FFBF00","#3A3AA4", "#31CD71", "#F0792C", "#6C3ABF")
+
+
+
+# read data and compute data for demographic table
+data=read.csv('~/Desktop/Alex_fingerprinting/QPN_demo_with_fingerprinting_score_new.csv', stringsAsFactors = FALSE)
+
+
+data2=read.csv('~/Desktop/Alex_fingerprinting/BD_RPQ_UPDATE_Neuropsy_PD.csv', na.strings = c('NA', "Na", '999'), stringsAsFactors = FALSE)
+
+matched_id= data$SubjID[data$SubjID %in% data2$Patient..]
+
+data$moca2[data$SubjID %in% data2$Patient.. ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% data2$Patient..], matched_id[order(matched_id)], data2$MoCA..Raw.score.[data2$Patient.. %in% data$SubjID])
+data$updrs2[data$SubjID %in% data2$Patient.. ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% data2$Patient..], matched_id[order(matched_id)], data2$UPDRS.Score.part.3[data2$Patient.. %in% data$SubjID])
+
+data$moca2=as.numeric(data$moca2)
+data$updrs2=as.numeric(data$updrs2)
+
+
+data %>% group_by(Group) %>% summarise(m_age= mean(Age, na.rm=TRUE), sd_age= sd(Age, na.rm=TRUE))
+table(data$Group, data$Sex)
+table(data$Group, data$Handedness)
+
+data %>% group_by(Group) %>% summarise(m_age= mean(Education_coded, na.rm=TRUE), sd_age= sd(Education_coded, na.rm=TRUE))
+
+data %>% group_by(Group) %>% summarise(m_age= mean(Hoehn.and.Yahr.score, na.rm=TRUE), sd_age= sd(Hoehn.and.Yahr.score, na.rm=TRUE))
+
+data %>% group_by(Group) %>% summarise(m_age= mean(updrs2, na.rm=TRUE), sd_age= sd(updrs2, na.rm=TRUE))
+
+data %>% group_by(Group) %>% summarise(m_age= mean( moca2, na.rm=TRUE), sd_age= sd(moca2, na.rm=TRUE))
+
+
+```
+
+
+Project on QPN data using controls to fingerprint Parkinsons Disease Patnetins 
+
+First we plot the results of fingerpritnting from three types of cohorts:
+  1) PD only
+  2) controls only (age matched) 
+  3) Everyone
+
+```{r fingerprinting accuracy}
+
+# plot fingerpritning accuracy for all conditions (differentiation accuracy)
+df=read.csv("~/Desktop/Alex_fingerprinting/PD_fingerpritning_bands_Dec2021.csv", header = TRUE, stringsAsFactors = FALSE)
+df$Experiment= factor(df$Experiment,levels = c("CTL", "PD", "fulldata"))
+df$ACC= rowMeans(df[,3:4])
+df_corr=df[28:42,]
+df=df[1:27,]
+df$Band= factor(df$Band,levels = c("fullband", "delta", "theta", "alpha", "beta", "gamma", "hgamma", "aperiodic", "periodic"))
+df$Band=plyr::mapvalues(df$Band, unique(df$Band), c("Broadband","Delta", "Theta", "Alpha", "Beta", "Gamma", "High\nGamma", "Aperiodic", "Periodic"))
+
+
+ggplot(data=df, aes(x=Band, y=ACC, fill=Experiment, width=.5)) +  coord_cartesian(ylim=c(50,100))+geom_bar(stat = "identity", position=position_dodge(width = 0.5)) +theme_classic2() + scale_fill_manual(values=cbbPalette) + labs(y="Accuracy (%)", x="",title="") + theme(text = element_text(size=35), legend.title=element_blank())
+
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/figure/fingerprinting_cohort.pdf', device = "pdf", width=20, height=8, dpi=800)
+
+
+ggplot(data=df, aes(x=Band, y=ACC_boot, fill=Experiment, width=.5)) +  coord_cartesian(ylim=c(50,100))+geom_bar(stat = "identity", position=position_dodge(width = 0.5)) +
+geom_errorbar(aes(ymin=ACC_lowerCI, ymax=ACC_upperCI), width=.2 ,position=position_dodge(.5)) +theme_classic2() + scale_fill_manual(values=cbbPalette) + labs(y="Accuracy (%)", x="",title="") + theme(text = element_text(size=35), legend.title=element_blank())
+
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/figure/fingerprinting_cohort_bootstrapped.pdf', device = "pdf", width=20, height=8, dpi=800)
+
+
+ggplot(data=df[1:21,], aes(x=Band, y=ACC_boot, fill=Experiment, width=.5)) +  coord_cartesian(ylim=c(50,100))+geom_bar(stat = "identity", position=position_dodge(width = 0.5)) +
+geom_errorbar(aes(ymin=ACC_lowerCI, ymax=ACC_upperCI), width=.2 ,position=position_dodge(.5)) +theme_classic2() + scale_fill_manual(values=cbbPalette) + labs(y="Accuracy (%)", x="",title="") + theme(text = element_text(size=35), legend.title=element_blank())
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/figure/fingerprinting_cohort_bootstrapped_justspectra.pdf', device = "pdf", width=16, height=5.5, dpi=800)
+
+
+df_corr$Band= factor(df_corr$Band,levels = c("aperiodic corrected", "aperiodic corrected delta", "aperiodic corrected theta", "aperiodic corrected alpha", "aperiodic corrected beta"))
+df_corr$Band=plyr::mapvalues(df_corr$Band, unique(df_corr$Band), c("Broadband","Delta", "Theta", "Alpha", "Beta"))
+
+ggplot(data=df_corr, aes(x=Band, y=ACC_boot, fill=Experiment, width=.5)) +  coord_cartesian(ylim=c(50,100))+geom_bar(stat = "identity", position=position_dodge(width = 0.5)) +
+geom_errorbar(aes(ymin=ACC_lowerCI, ymax=ACC_upperCI), width=.2 ,position=position_dodge(.5)) +theme_classic2() + scale_fill_manual(values=cbbPalette) + labs(y="Accuracy (%)", x="",title="") + theme(text = element_text(size=35), legend.title=element_blank())
+
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/figure/fingerprinting_cohort_bootstrapped_corrected.pdf', device = "pdf", width=20, height=8, dpi=800)
+
+
+
+df=read.csv("~/Desktop/Alex_fingerprinting/PD_fingerpritning_bands_emptyroom.csv", header = TRUE, stringsAsFactors = FALSE)
+df$Experiment= factor(df$Experiment,levels = c("CTL", "PD", "fulldata"))
+df$ACC= rowMeans(df[,3:6])
+df$Band= factor(df$Band,levels = c("fullband", "delta", "theta", "alpha", "beta", "gamma", "hgamma"))
+df$Band=plyr::mapvalues(df$Band, unique(df$Band), c("Broadband","Delta", "Theta", "Alpha", "Beta", "Gamma", "High\nGamma"))
+
+
+ggplot(data=df, aes(x=Band, y=ACC, fill=Experiment, width=.5)) +  coord_cartesian(ylim=c(0,20))+geom_bar(stat = "identity", position=position_dodge(width = 0.5)) +theme_classic2() + scale_fill_manual(values=cbbPalette) + labs(y="Accuracy (%)", x="",title="") + theme(text = element_text(size=35), legend.title=element_blank())
+
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/figure/fingerprinting_emptyroom.pdf', device = "pdf", width=20, height=8, dpi=800)
+
+
+
+df=read.csv("~/Desktop/Alex_fingerprinting/PD_fingerpritning_bands_Dec2021.csv", header = TRUE, stringsAsFactors = FALSE)
+df$Experiment= factor(df$Experiment,levels = c("CTL", "PD", "fulldata"))
+df$ACC= rowMeans(df[,3:4])
+df_corr=df[28:42,]
+df=df[1:27,]
+df$Band= factor(df$Band,levels = c("fullband", "delta", "theta", "alpha", "beta", "gamma", "hgamma", "aperiodic", "periodic"))
+df$Band=plyr::mapvalues(df$Band, unique(df$Band), c("Broadband","Delta", "Theta", "Alpha", "Beta", "Gamma", "High\nGamma", "Aperiodic", "Periodic"))
+
+
+
+df2=read.csv("~/Desktop/Alex_fingerprinting/PD_fingerpritning_bands_emptyroom.csv", header = TRUE, stringsAsFactors = FALSE)
+df2$Experiment= factor(df2$Experiment,levels = c("CTL", "PD", "fulldata"))
+df2$ACC= rowMeans(df2[,3:6])
+df2$Band= factor(df2$Band,levels = c("fullband", "delta", "theta", "alpha", "beta", "gamma", "hgamma"))
+df2$Band=plyr::mapvalues(df2$Band, unique(df2$Band), c("Broadband","Delta", "Theta", "Alpha", "Beta", "Gamma", "High\nGamma"))
+
+df= df[!df$Band %in% c("Aperiodic", "Periodic"),]
+
+ggplot(data=df, aes(x=Band, y=ACC_boot, fill=Experiment, width=.5)) +  coord_cartesian(ylim=c(0,100))+geom_bar(stat = "identity", position=position_dodge(width = 0.5)) +
+geom_errorbar(aes(ymin=ACC_lowerCI, ymax=ACC_upperCI), width=.2 ,position=position_dodge(.5)) +theme_classic2() + scale_fill_manual(values=cbbPalette) + labs(y="Accuracy (%)", x="",title="") + theme(text = element_text(size=35), legend.title=element_blank())
+
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/figure/fingerprinting_full_range1.pdf', device = "pdf", width=20, height=8, dpi=800)
+
+ggplot(data=df2, aes(x=Band, y=ACC, fill=Experiment, width=.5)) +  coord_cartesian(ylim=c(0,100))+geom_bar(stat = "identity", position=position_dodge(width = 0.5)) +theme_classic2() + scale_fill_manual(values=cbbPalette) + labs(y="Accuracy (%)", x="",title="") + theme(text = element_text(size=35), legend.title=element_blank()) + scale_fill_grey()
+
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/figure/fingerprinting_full_range2.pdf', device = "pdf", width=20, height=8, dpi=800)
+
+
+```
+
+Now let us run some models and see how fingerprinting scores relate to particpant demographics 
+
+First we will look at how clinical scores relate to IDENTIFIABILITY
+
+This messure reflects both the self-corr of a participant to themselves and to others too 
+
+
+Now let us check that this is not driven by recording artifacts 
+
+```{r differentiability, motor symptoms, and recording artifacts}
+
+data=read.csv('~/Desktop/Alex_fingerprinting/QPN_demo_with_fingerprinting_score_new.csv', stringsAsFactors = FALSE)
+
+data2=read.csv('~/Desktop/Alex_fingerprinting/BD_RPQ_UPDATE_Neuropsy_PD.csv', na.strings = c('NA', "Na", '999'), stringsAsFactors = FALSE)
+
+matched_id= data$SubjID[data$SubjID %in% data2$Patient..]
+
+data$moca2[data$SubjID %in% data2$Patient.. ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% data2$Patient..], matched_id[order(matched_id)], data2$MoCA..Raw.score.[data2$Patient.. %in% data$SubjID])
+data$updrs2[data$SubjID %in% data2$Patient.. ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% data2$Patient..], matched_id[order(matched_id)], data2$UPDRS.Score.part.3[data2$Patient.. %in% data$SubjID])
+
+data$moca2=as.numeric(data$moca2)
+data$updrs2=as.numeric(data$updrs2)
+
+motion = read.csv('~/Desktop/Alex_fingerprinting/QPN_motion_12132021_jason.csv', na.strings = 'NaN', stringsAsFactors = FALSE)
+
+matched_id2= data$SubjID[data$SubjID %in% motion$ID]
+
+
+data$ECG[data$SubjID %in% motion$ID ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% motion$ID], matched_id2[order(matched_id2)], motion$ECG[motion$ID %in% data$SubjID])
+
+data$EOG[data$SubjID %in% motion$ID ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% motion$ID], matched_id2[order(matched_id2)], motion$EOG[motion$ID %in% data$SubjID])
+
+
+data$HLU[data$SubjID %in% motion$ID ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% motion$ID], matched_id2[order(matched_id2)], motion$HLU[motion$ID %in% data$SubjID])
+
+
+data$ECG=as.numeric(data$ECG)
+data$EOG=as.numeric(data$EOG)
+data$HLU=as.numeric(data$HLU)
+
+diseasedur = read.csv('~/Desktop/Alex_fingerprinting/QPN_diseasedurations.csv', na.strings = 'NaN', stringsAsFactors = FALSE)
+colnames(diseasedur)[1]="IDs"
+matched_id2= data$SubjID[data$SubjID %in% diseasedur$IDs]
+
+data$DiseaseDur[data$SubjID %in% diseasedur$IDs ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% diseasedur$IDs], matched_id2[order(matched_id2)], diseasedur$DiseaseDurationSinceDiagnosis[diseasedur$IDs %in% data$SubjID])
+
+data$DiseaseDur=as.numeric(data$DiseaseDur)
+
+# first let us look at differentibility (identifiability) and physiological artifacts
+data4reg=data[data$Group=='Parkinson',]
+data4reg=data4reg[!is.na(data4reg$HLU),]
+data4reg=data4reg[!is.na(data4reg$EOG),]
+data4reg=data4reg[!is.na(data4reg$ECG),]
+
+
+cor.test(data4reg$identifiability, data4reg$HLU) # some correlation (seems driven by outliers)
+result <- correlationBF(data4reg$identifiability, data4reg$HLU)
+bayestestR::bayesfactor(result) # compute BF not much evidence 
+cor.test(data4reg$identifiability, data4reg$EOG)
+cor.test(data4reg$identifiability, data4reg$ECG)
+
+lm3=lm(identifiability ~ HLU, data4reg)
+summary(lm3)
+
+ggplot(data4reg, aes(x=HLU , y = identifiability, fill=cbbPalette[6])) + 
+  geom_jitter(colour = cbbPalette[6]) + 
+  stat_smooth(method = "lm", colour = 'black',fullrange = T, fill=cbbPalette[6]) +
+  labs(title = paste("Adj R2 = ", signif(summary(lm3)$adj.r.squared, 5),
+                     "Intercept =", signif(lm3$coef[[1]],5 ),
+                     " Slope =", signif(lm3$coef[[2]], 5),
+                     " P =", signif(summary(lm3)$coef[2,4], 5) )) + scale_fill_manual(values=cbbPalette[6])  + theme_classic2() +   xlab("Head motion") + ylab("identifiability")+
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14,face="bold"), legend.position = "none") 
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/figure/Regression_self_id_Head_motion.pdf', device = "pdf", width=5, height=5, dpi=800)
+
+lm3=lm(identifiability ~ EOG, data4reg)
+
+ggplot(data4reg, aes(x=EOG , y = identifiability, fill=cbbPalette[5])) + 
+  geom_jitter(colour = cbbPalette[5]) + 
+  stat_smooth(method = "lm", colour = 'black',fullrange = T,fill=cbbPalette[5]) +
+  labs(title = paste("Adj R2 = ", signif(summary(lm3)$adj.r.squared, 5),
+                     "Intercept =", signif(lm3$coef[[1]],5 ),
+                     " Slope =", signif(lm3$coef[[2]], 5),
+                     " P =", signif(summary(lm3)$coef[2,4], 5) )) + scale_fill_manual(values=cbbPalette[5])  + theme_classic2() +   xlab("Ocular artifacts") + ylab("identifiability")+
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14,face="bold"), legend.position = "none") 
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/figure/Regression_self_id_ocular_artifacts.pdf', device = "pdf", width=5, height=5, dpi=800)
+
+lm3=lm(identifiability ~ ECG, data4reg)
+
+ggplot(data4reg, aes(x=ECG , y = identifiability, fill=cbbPalette[4])) + 
+  geom_jitter(colour = cbbPalette[4]) + 
+  stat_smooth(method = "lm", colour = 'black',fullrange = T, fill=cbbPalette[4]) +
+  labs(title = paste("Adj R2 = ", signif(summary(lm3)$adj.r.squared, 5),
+                     "Intercept =", signif(lm3$coef[[1]],5 ),
+                     " Slope =", signif(lm3$coef[[2]], 5),
+                     " P =", signif(summary(lm3)$coef[2,4], 5) )) + scale_fill_manual(values=cbbPalette[4])  + theme_classic2() +   xlab("Cardiac artifacts") + ylab("identifiability")+
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14,face="bold"), legend.position = "none") 
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/figure/Regression_self_id_cardiac_artifacts.pdf', device = "pdf", width=5, height=5, dpi=800)
+
+
+# run regression to test relationship between motor symptoms and differentiability 
+data4reg=data[data$Group=='Parkinson',]
+data4reg=data4reg[!is.na(data4reg$HLU),]
+data4reg=data4reg[!is.na(data4reg$EOG),]
+data4reg=data4reg[!is.na(data4reg$ECG),]
+data4reg=data4reg[!is.na(data4reg$updrs2),]
+data4reg=data4reg[!is.na(data4reg$moca2),]
+data4reg=data4reg[!is.na(data4reg$DiseaseDur),]
+
+lm0=lm(identifiability ~ 1, data4reg)      
+lm1=lm(identifiability ~ Age + Education_coded + DiseaseDur, data4reg)
+lm2=lm(identifiability ~ Age + Education_coded + DiseaseDur+ updrs2, data4reg)
+lm3=lm(identifiability ~ Age + Education_coded + DiseaseDur+ updrs2 +moca2, data4reg)
+
+anova(lm0,lm1,lm2,lm3)
+summary(lm2)
+sjPlot::tab_model(lm2)
+
+lm0=lm(identifiability ~ 1, data4reg)      
+lm1=lm(identifiability ~ Age + Education_coded + DiseaseDur+ HLU, data4reg)
+lm2=lm(identifiability ~ Age + Education_coded + DiseaseDur+ HLU+ updrs2, data4reg)
+lm3=lm(identifiability ~ Age + Education_coded + DiseaseDur+ HLU+ updrs2 +moca2, data4reg)
+
+anova(lm0,lm1,lm2,lm3)
+summary(lm2)
+sjPlot::tab_model(lm2)
+performance::check_model(lm2)
+
+bf = regressionBF(identifiability ~ Age + Education_coded + DiseaseDur+ HLU+ updrs2, data4reg, whichModels = "top")
+
+pdf("/Users/jasondsc/Desktop/Alex_fingerprinting/figure/BF_Regression_self_id_corrected4head_full_model.pdf") 
+plot(bf)
+dev.off()
+summary(bf)
+
+
+bf = regressionBF(identifiability ~ Age + Education_coded + DiseaseDur+ updrs2, data4reg, whichModels = "top")
+summary(bf)
+
+
+# final plot for effect once we corrected for everything 
+data4reg=data[data$Group=='Parkinson',]
+data4reg=data4reg[!is.na(data4reg$HLU),]
+data4reg=data4reg[!is.na(data4reg$updrs2),]
+data4reg=data4reg[!is.na(data4reg$moca2),]
+data4reg=data4reg[!is.na(data4reg$DiseaseDur),]
+
+lm3=lm(identifiability ~ Age + Education_coded + DiseaseDur+ HLU+ updrs2, data4reg)
+summary(lm3)
+sjPlot::tab_model(lm3)
+
+lmtemp1=lm(identifiability ~ Age + Education_coded + DiseaseDur+ HLU , data4reg)
+lmtemp2=lm(updrs2 ~ Age + Education_coded + DiseaseDur+ HLU , data4reg)
+resid2plot= data.frame(identifiability= lmtemp1$residuals, updrs = lmtemp2$residuals )
+
+
+ggplot(resid2plot, aes(x=updrs , y = identifiability, fill=cbbPalette[1])) + 
+  geom_jitter(colour = cbbPalette[1]) + 
+  stat_smooth(method = "lm", colour = 'black',fullrange = T) +
+  labs(title = paste("Adj R2 = ", signif(summary(lm3)$adj.r.squared, 5),
+                     "Intercept =", signif(lm3$coef[[1]],5 ),
+                     " Slope =", signif(lm3$coef[[6]], 5),
+                     " P =", signif(summary(lm3)$coef[6,4], 5) )) + scale_fill_manual(values=cbbPalette[1])  + theme_classic2() +   xlab("UPDRS residuals") + ylab("identifiability residuals")+
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14,face="bold"), legend.position = "none") 
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/figure/Regression_self_id_UPDRS_corrected_model.pdf', device = "pdf", width=5, height=5, dpi=800)
+
+
+```
+
+
+Let us break down this UPDRS effect even further:
+The subscales do no seem to help differentiate or understand the relationship we saw above... could be do to another aspect of the scale?? 
+
+
+```{r UPDRS subscore}
+
+data=read.csv('~/Desktop/Alex_fingerprinting/QPN_demo_with_fingerprinting_score_new.csv', stringsAsFactors = FALSE)
+
+data2=read.csv('~/Desktop/Alex_fingerprinting/BD_RPQ_UPDATE_Neuropsy_PD.csv', na.strings = c('NA', "Na", '999'), stringsAsFactors = FALSE)
+
+matched_id= data$SubjID[data$SubjID %in% data2$Patient..]
+
+data$moca2[data$SubjID %in% data2$Patient.. ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% data2$Patient..], matched_id[order(matched_id)], data2$MoCA..Raw.score.[data2$Patient.. %in% data$SubjID])
+data$updrs2[data$SubjID %in% data2$Patient.. ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% data2$Patient..], matched_id[order(matched_id)], data2$UPDRS.Score.part.3[data2$Patient.. %in% data$SubjID])
+
+data$moca2=as.numeric(data$moca2)
+data$updrs2=as.numeric(data$updrs2)
+
+motion = read.csv('~/Desktop/Alex_fingerprinting/QPN_motion_12132021_jason.csv', na.strings = 'NaN', stringsAsFactors = FALSE)
+
+matched_id2= data$SubjID[data$SubjID %in% motion$ID]
+
+
+data$ECG[data$SubjID %in% motion$ID ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% motion$ID], matched_id2[order(matched_id2)], motion$ECG[motion$ID %in% data$SubjID])
+
+data$EOG[data$SubjID %in% motion$ID ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% motion$ID], matched_id2[order(matched_id2)], motion$EOG[motion$ID %in% data$SubjID])
+
+
+data$HLU[data$SubjID %in% motion$ID ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% motion$ID], matched_id2[order(matched_id2)], motion$HLU[motion$ID %in% data$SubjID])
+
+
+data$ECG=as.numeric(data$ECG)
+data$EOG=as.numeric(data$EOG)
+data$HLU=as.numeric(data$HLU)
+
+diseasedur = read.csv('~/Desktop/Alex_fingerprinting/QPN_diseasedurations.csv', na.strings = 'NaN', stringsAsFactors = FALSE)
+colnames(diseasedur)[1]="IDs"
+matched_id2= data$SubjID[data$SubjID %in% diseasedur$IDs]
+
+data$DiseaseDur[data$SubjID %in% diseasedur$IDs ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% diseasedur$IDs], matched_id2[order(matched_id2)], diseasedur$DiseaseDurationSinceDiagnosis[diseasedur$IDs %in% data$SubjID])
+
+data$DiseaseDur=as.numeric(data$DiseaseDur)
+
+colnames(diseasedur)[1]="IDs"
+matched_id2= data$SubjID[data$SubjID %in% diseasedur$IDs]
+
+
+UPDRSsub = read.csv('~/Desktop/Alex_fingerprinting/QPN_UPDRS_subscores_jason.csv', na.strings = 'NaN', stringsAsFactors = FALSE)
+colnames(UPDRSsub)[1]="IDs"
+matched_id2= data$SubjID[data$SubjID %in% UPDRSsub$IDs]
+
+corrtempdata=UPDRSsub[,2:16]
+corrtempdata=corrtempdata[!is.na(corrtempdata$X.11..Posture),]
+mydata.cor = cor(corrtempdata, method = c("pearson"))
+corrplot(mydata.cor)
+
+UPDRSsub = read.csv('~/Desktop/Alex_fingerprinting/QPN_UPDRS_subscores_factorSUMs_12132021_jason.csv', na.strings = 'NaN', stringsAsFactors = FALSE)
+colnames(UPDRSsub)[1]="IDs"
+matched_id2= data$SubjID[data$SubjID %in% UPDRSsub$IDs]
+
+data$axialgait[data$SubjID %in% UPDRSsub$IDs ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% UPDRSsub$IDs], matched_id2[order(matched_id2)], UPDRSsub$axial_function_gait[UPDRSsub$IDs %in% data$SubjID])
+data$resttrem[data$SubjID %in% UPDRSsub$IDs ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% UPDRSsub$IDs], matched_id2[order(matched_id2)], UPDRSsub$rest_tremor[UPDRSsub$IDs %in% data$SubjID])
+data$rigidity[data$SubjID %in% UPDRSsub$IDs ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% UPDRSsub$IDs], matched_id2[order(matched_id2)], UPDRSsub$rigidity[UPDRSsub$IDs %in% data$SubjID])
+data$bradykinesia[data$SubjID %in% UPDRSsub$IDs ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% UPDRSsub$IDs], matched_id2[order(matched_id2)], UPDRSsub$bradykinesia[UPDRSsub$IDs %in% data$SubjID])
+data$posturaltrem[data$SubjID %in% UPDRSsub$IDs ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% UPDRSsub$IDs], matched_id2[order(matched_id2)], UPDRSsub$postural_tremor[UPDRSsub$IDs %in% data$SubjID])
+
+# subjects mismatched UPDRS score
+data[142,33:37]=UPDRSsub[103,2:6]
+data[141,33:37]=UPDRSsub[106,2:6]
+
+data$axialgait=as.numeric(data$axialgait)
+data$resttrem=as.numeric(data$resttrem)
+data$rigidity=as.numeric(data$rigidity)
+data$bradykinesia=as.numeric(data$bradykinesia)
+data$posturaltrem=as.numeric(data$posturaltrem)
+data$UPDRS_mean=rowSums(data[,(length(data)-4):length(data)])
+
+
+data4reg=data[data$Group=='Parkinson',]
+data4reg=data4reg[!is.na(data4reg$moca2),]
+data4reg=data4reg[!is.na(data4reg$UPDRS_mean),]
+data4reg=data4reg[!is.na(data4reg$Education_coded),]
+data4reg=data4reg[!is.na(data4reg$DiseaseDur),]
+data4reg=data4reg[!is.na(data4reg$HLU),]
+
+data4reg$updrs_remove_axis=rowSums(data4reg[,34:37])
+data4reg$updrs_remove_resttrem=rowSums(data4reg[,c(33, 35:37)])
+data4reg$updrs_remove_rigidity=rowSums(data4reg[,c(33:34, 36:37)])
+data4reg$updrs_remove_bradyk=rowSums(data4reg[,c(33:35, 37)])
+data4reg$updrs_remove_postural_trem=rowSums(data4reg[,33:36])
+
+lm0=lm(identifiability ~ Age + Education_coded+ DiseaseDur+ HLU+ UPDRS_mean, data4reg)
+lm1=lm(identifiability ~ Age + Education_coded+ DiseaseDur+ HLU+ updrs_remove_axis, data4reg)
+lm2=lm(identifiability ~ Age + Education_coded+ DiseaseDur+ HLU+ updrs_remove_resttrem, data4reg)
+lm3=lm(identifiability ~ Age + Education_coded+ DiseaseDur+ HLU+ updrs_remove_rigidity, data4reg)
+lm4=lm(identifiability ~ Age + Education_coded+ DiseaseDur+ HLU+ updrs_remove_bradyk, data4reg)
+lm5=lm(identifiability ~ Age + Education_coded+ DiseaseDur+ HLU+ updrs_remove_postural_trem, data4reg)
+
+AIC(lm0)-AIC(lm1)
+AIC(lm0)-AIC(lm2)
+AIC(lm0)-AIC(lm3)
+AIC(lm0)-AIC(lm4)
+AIC(lm0)-AIC(lm5)
+
+
+data_AIC= data.frame(AIC= c(AIC(lm0)-AIC(lm1), AIC(lm0)-AIC(lm2), AIC(lm0)-AIC(lm3), AIC(lm0)-AIC(lm4),AIC(lm0)-AIC(lm5)), AIC_labels= c('axis gait  ', 'rest tremor  ', 'rigidity    ', 'bradykinesia ', 'postural tremor'))
+
+ggplot(data = data_AIC, aes(x=2, y=AIC*5, fill = AIC_labels)) +
+  geom_col(position = "stack", width = 0.5,show.legend=FALSE) +
+  #geom_text(aes(label = round(AIC, digits = 2), x=1), position = position_stack(vjust = 0.5), size = 6) + 
+  geom_text(aes(label = AIC_labels, x=3.75), position = position_stack(vjust = 0.5), size = 5) +
+  xlim(0,5)+
+  coord_polar("y") + scale_fill_manual(values=cbbPalette) +
+  theme_void()
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/figure/Donut_UPDRS_subscore.pdf', device = "pdf", width=2, height=2, dpi=800)
+```
+
+
+AIC approach to test which frequency bands are most important (akin to previous approach) for the relationship between self-id and UPDRS
+
+```{r AIC to look at frequency bands}
+
+data=read.csv('~/Desktop/Alex_fingerprinting/QPN_demo_with_fingerprinting_score_new.csv', stringsAsFactors = FALSE)
+
+data2=read.csv('~/Desktop/Alex_fingerprinting/BD_RPQ_UPDATE_Neuropsy_PD.csv', na.strings = c('NA', "Na", '999'), stringsAsFactors = FALSE)
+
+matched_id= data$SubjID[data$SubjID %in% data2$Patient..]
+
+data$moca2[data$SubjID %in% data2$Patient.. ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% data2$Patient..], matched_id[order(matched_id)], data2$MoCA..Raw.score.[data2$Patient.. %in% data$SubjID])
+data$updrs2[data$SubjID %in% data2$Patient.. ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% data2$Patient..], matched_id[order(matched_id)], data2$UPDRS.Score.part.3[data2$Patient.. %in% data$SubjID])
+
+data$moca2=as.numeric(data$moca2)
+data$updrs2=as.numeric(data$updrs2)
+
+motion = read.csv('~/Desktop/Alex_fingerprinting/QPN_motion_12132021_jason.csv', na.strings = 'NaN', stringsAsFactors = FALSE)
+
+matched_id2= data$SubjID[data$SubjID %in% motion$ID]
+
+
+data$ECG[data$SubjID %in% motion$ID ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% motion$ID], matched_id2[order(matched_id2)], motion$ECG[motion$ID %in% data$SubjID])
+
+data$EOG[data$SubjID %in% motion$ID ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% motion$ID], matched_id2[order(matched_id2)], motion$EOG[motion$ID %in% data$SubjID])
+
+
+data$HLU[data$SubjID %in% motion$ID ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% motion$ID], matched_id2[order(matched_id2)], motion$HLU[motion$ID %in% data$SubjID])
+
+
+data$ECG=as.numeric(data$ECG)
+data$EOG=as.numeric(data$EOG)
+data$HLU=as.numeric(data$HLU)
+
+diseasedur = read.csv('~/Desktop/Alex_fingerprinting/QPN_diseasedurations.csv', na.strings = 'NaN', stringsAsFactors = FALSE)
+colnames(diseasedur)[1]="IDs"
+matched_id2= data$SubjID[data$SubjID %in% diseasedur$IDs]
+
+data$DiseaseDur[data$SubjID %in% diseasedur$IDs ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% diseasedur$IDs], matched_id2[order(matched_id2)], diseasedur$DiseaseDurationSinceDiagnosis[diseasedur$IDs %in% data$SubjID])
+
+data$DiseaseDur=as.numeric(data$DiseaseDur)
+
+colnames(diseasedur)[1]="IDs"
+matched_id2= data$SubjID[data$SubjID %in% diseasedur$IDs]
+
+data$DiseaseDur[data$SubjID %in% diseasedur$IDs ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% diseasedur$IDs], matched_id2[order(matched_id2)], diseasedur$DiseaseDurationSinceDiagnosis[diseasedur$IDs %in% data$SubjID])
+
+data$DiseaseDur=as.numeric(data$DiseaseDur)
+
+self_id_aic = read.csv('~/Desktop/Alex_fingerprinting/QPN_demo_with_fingerprinting_score_AIC_analysis.csv', na.strings = 'NaN', stringsAsFactors = FALSE)
+
+data=cbind(data, self_id_aic[,17:26])
+
+data4plot=data[data$Group=='Parkinson',] # two participants have an aletered MOCA score with new neuropsych data
+data4reg=data[data$Group=='Parkinson',]
+data4reg=data4reg[!is.na(data4reg$DiseaseDur),]
+data4reg=data4reg[!is.na(data4reg$updrs2),]
+data4reg=data4reg[!is.na(data4reg$moca2),]
+data4reg=data4reg[!is.na(data4reg$HLU),]
+
+lm0=lm(updrs2 ~ Age + Education_coded+ DiseaseDur+ HLU + identifiability, data4reg)
+lm1=lm(updrs2 ~ Age + Education_coded+ DiseaseDur+ HLU + self_id_remove_delta, data4reg)
+lm2=lm(updrs2 ~ Age + Education_coded+ DiseaseDur+ HLU +self_id_remove_theta, data4reg)
+lm3=lm(updrs2 ~ Age + Education_coded+ DiseaseDur+ HLU +self_id_remove_alpha, data4reg)
+lm4=lm(updrs2 ~ Age + Education_coded+ DiseaseDur+ HLU +self_id_remove_beta, data4reg)
+lm5=lm(updrs2 ~ Age + Education_coded+ DiseaseDur+ HLU +self_id_remove_gamma, data4reg)
+lm6=lm(updrs2 ~ Age + Education_coded+ DiseaseDur+ HLU + self_id_remove_highgamma, data4reg)
+
+AIC(lm0)-AIC(lm1)
+AIC(lm0)-AIC(lm2)
+AIC(lm0)-AIC(lm3)
+AIC(lm0)-AIC(lm4)
+AIC(lm0)-AIC(lm5)
+AIC(lm0)-AIC(lm6)
+
+
+data_AIC= data.frame(AIC= c(AIC(lm0)-AIC(lm1), AIC(lm0)-AIC(lm2), AIC(lm0)-AIC(lm3), AIC(lm0)-AIC(lm4),AIC(lm0)-AIC(lm5),AIC(lm0)-AIC(lm6)), AIC_labels= c('delta     ', 'theta     ', 'alpha     ', 'beta     ', 'gamma     ', 'high gamma'))
+
+ggplot(data = data_AIC, aes(x=2, y=AIC*5, fill = AIC_labels)) +
+  geom_col(position = "stack", width = 0.5,show.legend=FALSE) +
+  #geom_text(aes(label = round(AIC, digits = 2), x=1), position = position_stack(vjust = 0.5), size = 6) + 
+  geom_text(aes(label = AIC_labels, x=3.75), position = position_stack(vjust = 0.5), size = 5) +
+  xlim(0,5)+
+  coord_polar("y") + scale_fill_manual(values = cbbPalette) +
+  theme_void()
+
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/figure/Donut_Freq_spectrum.pdf', device = "pdf", width=2, height=2, dpi=800)
+```
+
+
+
+Now let us look at quantifying an effect with the aperiodic components of the spectra 
+
+
+```{r Aperiodic effects}
+
+
+data=read.csv('~/Desktop/Alex_fingerprinting/QPN_demo_with_fingerprinting_score_new.csv', stringsAsFactors = FALSE)
+
+data2=read.csv('~/Desktop/Alex_fingerprinting/BD_RPQ_UPDATE_Neuropsy_PD.csv', na.strings = c('NA', "Na", '999'), stringsAsFactors = FALSE)
+
+matched_id= data$SubjID[data$SubjID %in% data2$Patient..]
+
+data$moca2[data$SubjID %in% data2$Patient.. ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% data2$Patient..], matched_id[order(matched_id)], data2$MoCA..Raw.score.[data2$Patient.. %in% data$SubjID])
+data$updrs2[data$SubjID %in% data2$Patient.. ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% data2$Patient..], matched_id[order(matched_id)], data2$UPDRS.Score.part.3[data2$Patient.. %in% data$SubjID])
+
+data$moca2=as.numeric(data$moca2)
+data$updrs2=as.numeric(data$updrs2)
+
+motion = read.csv('~/Desktop/Alex_fingerprinting/QPN_motion_12132021_jason.csv', na.strings = 'NaN', stringsAsFactors = FALSE)
+
+matched_id2= data$SubjID[data$SubjID %in% motion$ID]
+
+
+data$ECG[data$SubjID %in% motion$ID ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% motion$ID], matched_id2[order(matched_id2)], motion$ECG[motion$ID %in% data$SubjID])
+
+data$EOG[data$SubjID %in% motion$ID ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% motion$ID], matched_id2[order(matched_id2)], motion$EOG[motion$ID %in% data$SubjID])
+
+
+data$HLU[data$SubjID %in% motion$ID ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% motion$ID], matched_id2[order(matched_id2)], motion$HLU[motion$ID %in% data$SubjID])
+
+
+data$ECG=as.numeric(data$ECG)
+data$EOG=as.numeric(data$EOG)
+data$HLU=as.numeric(data$HLU)
+
+diseasedur = read.csv('~/Desktop/Alex_fingerprinting/QPN_diseasedurations.csv', na.strings = 'NaN', stringsAsFactors = FALSE)
+colnames(diseasedur)[1]="IDs"
+matched_id2= data$SubjID[data$SubjID %in% diseasedur$IDs]
+
+data$DiseaseDur[data$SubjID %in% diseasedur$IDs ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% diseasedur$IDs], matched_id2[order(matched_id2)], diseasedur$DiseaseDurationSinceDiagnosis[diseasedur$IDs %in% data$SubjID])
+
+data$DiseaseDur=as.numeric(data$DiseaseDur)
+
+rembd= read.csv('~/Desktop/Alex_fingerprinting/QPN_CBIGData_forJason_01242022.csv', stringsAsFactors = FALSE, na.strings = c('NaN', 'N/D'))
+
+matched_id= data$SubjID[data$SubjID %in% rembd$participant]
+
+data$REM[data$SubjID %in% rembd$participant ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% rembd$participant], matched_id[order(matched_id)], rembd$RBD[rembd$participant %in% data$SubjID])
+
+
+aperiodic_data=read.csv('~/Desktop/Alex_fingerprinting/QPN_aperiodic_complied.csv', stringsAsFactors = FALSE, header = FALSE)
+
+PD_validation_R2 = read.csv('~/Desktop/Alex_fingerprinting/PD_validation_R2.csv', na.strings = 'NaN', stringsAsFactors = FALSE, header = FALSE)
+
+PD_training_R2 = read.csv('~/Desktop/Alex_fingerprinting/PD_training_R2.csv', na.strings = 'NaN', stringsAsFactors = FALSE, header = FALSE)
+
+
+HC_validation_R2 = read.csv('~/Desktop/Alex_fingerprinting/HC_validation_R2.csv', na.strings = 'NaN', stringsAsFactors = FALSE, header = FALSE)
+
+HC_training_R2 = read.csv('~/Desktop/Alex_fingerprinting/HC_training_R2.csv', na.strings = 'NaN', stringsAsFactors = FALSE, header = FALSE)
+
+HC_R2= rowMeans(data.frame(colMeans(HC_training_R2), colMeans(HC_validation_R2)))
+
+PD_R2= rowMeans(data.frame(colMeans(PD_training_R2), colMeans(PD_validation_R2)))
+
+data$FOOOF_fit = c(HC_R2, PD_R2)
+
+data$FOOOF_fit= as.numeric(c(HC_R2, PD_R2))
+
+motion = read.csv('~/Desktop/Alex_fingerprinting/QPN_motion_12132021_jason.csv', na.strings = 'NaN', stringsAsFactors = FALSE)
+
+matched_id2= data$SubjID[data$SubjID %in% motion$ID]
+
+
+data$ECG[data$SubjID %in% motion$ID ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% motion$ID], matched_id2[order(matched_id2)], motion$ECG[motion$ID %in% data$SubjID])
+
+data$EOG[data$SubjID %in% motion$ID ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% motion$ID], matched_id2[order(matched_id2)], motion$EOG[motion$ID %in% data$SubjID])
+
+
+data$HLU[data$SubjID %in% motion$ID ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% motion$ID], matched_id2[order(matched_id2)], motion$HLU[motion$ID %in% data$SubjID])
+
+
+# run above data matrix 
+data$HLU= as.numeric(data$HLU)
+data$EOG= as.numeric(data$EOG)
+data$ECG= as.numeric(data$ECG)
+data4reg=data[data$Group=='Parkinson',]
+data4reg=data4reg[!is.na(data4reg$HLU),]
+data4reg=data4reg[!is.na(data4reg$moca2),]
+data4reg=data4reg[!is.na(data4reg$updrs2),]
+data4reg=data4reg[!is.na(data4reg$DiseaseDur),]
+data4reg=data4reg[!is.na(data4reg$Age),]
+data4reg=data4reg[!is.na(data4reg$Education_coded),]
+
+lm3=lm(identifiability_aperiodic ~ identifiability, data4reg)
+summary(lm3)
+
+ggplot(data4reg, aes(x=identifiability , y = identifiability_aperiodic, fill=cbbPalette[2])) + 
+  geom_jitter(colour = cbbPalette[2]) + 
+  stat_smooth(method = "lm", colour = 'black',fullrange = T) +
+  labs(title = paste("Adj R2 = ", signif(summary(lm3)$adj.r.squared, 5),
+                     "Intercept =", signif(lm3$coef[[1]],5 ),
+                     " Slope =", signif(lm3$coef[[2]], 5),
+                     " P =", signif(summary(lm3)$coef[2,4], 5) )) + scale_fill_manual(values=cbbPalette[2])  + theme_classic2() +   xlab("Identifiability ") + ylab("Identifiability aperiodic")+
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14,face="bold"), legend.position = "none") 
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/figure/Regression_self_ID_fullband_and_aperiodic_similarity.pdf', device = "pdf", width=5, height=5, dpi=800)
+
+
+lm0=lm(identifiability_aperiodic ~ 1, data4reg) 
+lm1=lm(identifiability_aperiodic ~ Age + Education_coded + DiseaseDur + HLU, data4reg)
+lm3=lm(identifiability_aperiodic ~ Age + Education_coded+ DiseaseDur + HLU + updrs2, data4reg)
+lm4=lm(identifiability_aperiodic ~ Age + Education_coded+ DiseaseDur + HLU + updrs2 + FOOOF_fit, data4reg)
+lm5=lm(identifiability_aperiodic ~ Age + Education_coded+ DiseaseDur + HLU + updrs2 + FOOOF_fit +moca2, data4reg)
+
+anova(lm0,lm1,lm3, lm4, lm5)
+summary(lm4)
+sjPlot::tab_model(lm4)
+
+bf = regressionBF(identifiability_aperiodic ~ Age + Education_coded+ DiseaseDur + HLU + updrs2 + FOOOF_fit, data4reg, whichModels = "top")
+
+summary(bf)
+
+
+lmtemp1=lm(identifiability_aperiodic ~ Age + Education_coded + DiseaseDur+ HLU + FOOOF_fit, data4reg)
+lmtemp2=lm(updrs2 ~ Age + Education_coded + DiseaseDur+ HLU + FOOOF_fit, data4reg)
+resid2plot= data.frame(identifiability= lmtemp1$residuals, updrs = lmtemp2$residuals )
+
+
+ggplot(resid2plot, aes(x=updrs , y = identifiability, fill=cbbPalette[2])) + 
+  geom_jitter(colour = cbbPalette[2]) + 
+  stat_smooth(method = "lm", colour = 'black',fullrange = T) +
+  labs(title = paste("Adj R2 = ", signif(summary(lm4)$adj.r.squared, 5),
+                     "Intercept =", signif(lm4$coef[[1]],5 ),
+                     " Slope =", signif(lm4$coef[[6]], 5),
+                     " P =", signif(summary(lm4)$coef[6,4], 5) )) + scale_fill_manual(values=cbbPalette[2])  + theme_classic2() +   xlab("UPDRS residuals") + ylab("identifiability aperiodic residuals")+
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14,face="bold"), legend.position = "none") 
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/figure/Regression_self_id_aperiodic_UPDRS.pdf', device = "pdf", width=5, height=5, dpi=800)
+
+```
+
+The periodic identifiability score almost replicates previous results, with a trending effect
+Seems like it captures most everything but misses out on something 
+
+```{r periodic identifiability}
+
+data$HLU= as.numeric(data$HLU)
+data$EOG= as.numeric(data$EOG)
+data$ECG= as.numeric(data$ECG)
+data4reg=data[data$Group=='Parkinson',]
+data4reg=data4reg[!is.na(data4reg$HLU),]
+data4reg=data4reg[!is.na(data4reg$moca2),]
+data4reg=data4reg[!is.na(data4reg$updrs2),]
+data4reg=data4reg[!is.na(data4reg$DiseaseDur),]
+data4reg=data4reg[!is.na(data4reg$Age),]
+data4reg=data4reg[!is.na(data4reg$Education_coded),]
+
+lm3=lm(identifiability_periodic_corr ~ identifiability, data4reg)
+summary(lm3)
+
+ggplot(data4reg, aes(x=identifiability , y = identifiability_periodic_corr, fill=cbbPalette[4])) + 
+  geom_jitter(colour = cbbPalette[4]) + 
+  stat_smooth(method = "lm", colour = 'black',fullrange = T) +
+  labs(title = paste("Adj R2 = ", signif(summary(lm3)$adj.r.squared, 5),
+                     "Intercept =", signif(lm3$coef[[1]],5 ),
+                     " Slope =", signif(lm3$coef[[2]], 5),
+                     " P =", signif(summary(lm3)$coef[2,4], 5) )) + scale_fill_manual(values=cbbPalette[4])  + theme_classic2() +   xlab("Identifiability ") + ylab("Identifiability corrected spectrum")+
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14,face="bold"), legend.position = "none") 
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/figure/Regression_self_ID_fullband_and_corr_spect.pdf', device = "pdf", width=5, height=5, dpi=800)
+
+
+lm0=lm(identifiability_periodic_corr ~ 1, data4reg) 
+lm1=lm(identifiability_periodic_corr ~ Age + Education_coded + DiseaseDur + HLU, data4reg)
+lm3=lm(identifiability_periodic_corr ~ Age + Education_coded+ DiseaseDur + HLU + updrs2, data4reg)
+lm4=lm(identifiability_periodic_corr ~ Age + Education_coded+ DiseaseDur + HLU + updrs2 + FOOOF_fit, data4reg)
+lm5=lm(identifiability_periodic_corr ~ Age + Education_coded+ DiseaseDur + HLU + updrs2 + FOOOF_fit +moca2, data4reg)
+
+
+anova(lm0,lm1,lm3, lm4, lm5)
+summary(lm4)
+sjPlot::tab_model(lm4)
+
+bf = regressionBF(identifiability_periodic_corr ~ Age + Education_coded+ DiseaseDur + HLU + updrs2 + FOOOF_fit, data4reg, whichModels = "top")
+
+summary(bf)
+
+
+lmtemp1=lm(identifiability_periodic_corr ~ Age + Education_coded + DiseaseDur+ HLU + FOOOF_fit, data4reg)
+lmtemp2=lm(updrs2 ~ Age + Education_coded + DiseaseDur+ HLU + FOOOF_fit, data4reg)
+resid2plot= data.frame(identifiability= lmtemp1$residuals, updrs = lmtemp2$residuals )
+
+
+ggplot(resid2plot, aes(x=updrs , y = identifiability, fill=cbbPalette[5])) + 
+  geom_jitter(colour = cbbPalette[5]) + 
+  stat_smooth(method = "lm", colour = 'black',fullrange = T) +
+  labs(title = paste("Adj R2 = ", signif(summary(lm4)$adj.r.squared, 5),
+                     "Intercept =", signif(lm4$coef[[1]],5 ),
+                     " Slope =", signif(lm4$coef[[6]], 5),
+                     " P =", signif(summary(lm4)$coef[6,4], 5) )) + scale_fill_manual(values=cbbPalette[5])  + theme_classic2() +   xlab("UPDRS residuals") + ylab("identifiability corrected spectrum residuals")+
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14,face="bold"), legend.position = "none") 
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/figure/Regression_self_id_correct_spectrum_UPDRS.pdf', device = "pdf", width=5, height=5, dpi=800)
+
+```
+
+
+
+
+```{r AIC networks}
+
+data=read.csv('~/Desktop/Alex_fingerprinting/QPN_demo_with_fingerprinting_score_new.csv', stringsAsFactors = FALSE)
+
+data2=read.csv('~/Desktop/Alex_fingerprinting/BD_RPQ_UPDATE_Neuropsy_PD.csv', na.strings = c('NA', "Na", '999'), stringsAsFactors = FALSE)
+
+matched_id= data$SubjID[data$SubjID %in% data2$Patient..]
+
+data$moca2[data$SubjID %in% data2$Patient.. ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% data2$Patient..], matched_id[order(matched_id)], data2$MoCA..Raw.score.[data2$Patient.. %in% data$SubjID])
+data$updrs2[data$SubjID %in% data2$Patient.. ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% data2$Patient..], matched_id[order(matched_id)], data2$UPDRS.Score.part.3[data2$Patient.. %in% data$SubjID])
+
+data$moca2=as.numeric(data$moca2)
+data$updrs2=as.numeric(data$updrs2)
+
+motion = read.csv('~/Desktop/Alex_fingerprinting/QPN_motion_12132021_jason.csv', na.strings = 'NaN', stringsAsFactors = FALSE)
+
+matched_id2= data$SubjID[data$SubjID %in% motion$ID]
+
+
+data$ECG[data$SubjID %in% motion$ID ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% motion$ID], matched_id2[order(matched_id2)], motion$ECG[motion$ID %in% data$SubjID])
+
+data$EOG[data$SubjID %in% motion$ID ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% motion$ID], matched_id2[order(matched_id2)], motion$EOG[motion$ID %in% data$SubjID])
+
+
+data$HLU[data$SubjID %in% motion$ID ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% motion$ID], matched_id2[order(matched_id2)], motion$HLU[motion$ID %in% data$SubjID])
+
+
+data$ECG=as.numeric(data$ECG)
+data$EOG=as.numeric(data$EOG)
+data$HLU=as.numeric(data$HLU)
+
+diseasedur = read.csv('~/Desktop/Alex_fingerprinting/QPN_diseasedurations.csv', na.strings = 'NaN', stringsAsFactors = FALSE)
+colnames(diseasedur)[1]="IDs"
+matched_id2= data$SubjID[data$SubjID %in% diseasedur$IDs]
+
+data$DiseaseDur[data$SubjID %in% diseasedur$IDs ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% diseasedur$IDs], matched_id2[order(matched_id2)], diseasedur$DiseaseDurationSinceDiagnosis[diseasedur$IDs %in% data$SubjID])
+
+data$DiseaseDur=as.numeric(data$DiseaseDur)
+
+colnames(diseasedur)[1]="IDs"
+matched_id2= data$SubjID[data$SubjID %in% diseasedur$IDs]
+
+data$DiseaseDur[data$SubjID %in% diseasedur$IDs ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% diseasedur$IDs], matched_id2[order(matched_id2)], diseasedur$DiseaseDurationSinceDiagnosis[diseasedur$IDs %in% data$SubjID])
+
+data$DiseaseDur=as.numeric(data$DiseaseDur)
+
+
+PD_validation_R2 = read.csv('~/Desktop/Alex_fingerprinting/PD_validation_R2.csv', na.strings = 'NaN', stringsAsFactors = FALSE, header = FALSE)
+
+PD_training_R2 = read.csv('~/Desktop/Alex_fingerprinting/PD_training_R2.csv', na.strings = 'NaN', stringsAsFactors = FALSE, header = FALSE)
+
+
+HC_validation_R2 = read.csv('~/Desktop/Alex_fingerprinting/HC_validation_R2.csv', na.strings = 'NaN', stringsAsFactors = FALSE, header = FALSE)
+
+HC_training_R2 = read.csv('~/Desktop/Alex_fingerprinting/HC_training_R2.csv', na.strings = 'NaN', stringsAsFactors = FALSE, header = FALSE)
+
+HC_R2= rowMeans(data.frame(colMeans(HC_training_R2), colMeans(HC_validation_R2)))
+
+PD_R2= rowMeans(data.frame(colMeans(PD_training_R2), colMeans(PD_validation_R2)))
+
+data$FOOOF_fit = c(HC_R2, PD_R2)
+
+data$FOOOF_fit= as.numeric(data$FOOOF_fit)
+
+self_id_aic = read.csv('~/Desktop/Alex_fingerprinting/AIC_network_spectrum.csv', na.strings = 'NaN', stringsAsFactors = FALSE, header = FALSE)
+
+self_id_aic= t(self_id_aic)
+
+colnames(self_id_aic) = c('id_dmn', 'id_da', 'id_fp', 'id_limbic', 'id_sm', 'id_va', 'id_vis')
+
+data2=cbind(data, self_id_aic)
+
+data4reg=data2[data2$Group=='Parkinson',]
+data4reg=data4reg[!is.na(data4reg$DiseaseDur),]
+data4reg=data4reg[!is.na(data4reg$updrs2),]
+data4reg=data4reg[!is.na(data4reg$moca2),]
+data4reg=data4reg[!is.na(data4reg$HLU),]
+
+
+lm0=lm(updrs2 ~ Age + Education_coded+ DiseaseDur+ HLU + identifiability, data4reg)
+lm1=lm(updrs2 ~ Age + Education_coded+ DiseaseDur+ HLU + id_dmn, data4reg)
+lm2=lm(updrs2 ~ Age + Education_coded+ DiseaseDur+ HLU +id_da, data4reg)
+lm3=lm(updrs2 ~ Age + Education_coded+ DiseaseDur+ HLU +id_fp, data4reg)
+lm4=lm(updrs2 ~ Age + Education_coded+ DiseaseDur+ HLU +id_limbic, data4reg)
+lm5=lm(updrs2 ~ Age + Education_coded+ DiseaseDur+ HLU +id_sm, data4reg)
+lm6=lm(updrs2 ~ Age + Education_coded+ DiseaseDur+ HLU + id_va, data4reg)
+lm7=lm(updrs2 ~ Age + Education_coded+ DiseaseDur+ HLU + id_vis, data4reg)
+
+AIC(lm0)-AIC(lm1)
+AIC(lm0)-AIC(lm2)
+AIC(lm0)-AIC(lm3)
+AIC(lm0)-AIC(lm4)
+AIC(lm0)-AIC(lm5)
+AIC(lm0)-AIC(lm6)
+AIC(lm0)-AIC(lm7)
+
+
+data_AIC_network= data.frame(network= c('id_dmn', 'id_da', 'id_fp', 'id_limbic', 'id_sm', 'id_va', 'id_vis'), AIC= AIC(lm0)-AIC(lm1,lm2,lm3, lm4,lm5,lm6,lm7)[,2], Experiment= 'spectrum')
+
+
+
+self_id_aic = read.csv('~/Desktop/Alex_fingerprinting/AIC_network_aperiodic.csv', na.strings = 'NaN', stringsAsFactors = FALSE, header = FALSE)
+
+self_id_aic= t(self_id_aic)
+
+colnames(self_id_aic) = c('id_dmn', 'id_da', 'id_fp', 'id_limbic', 'id_sm', 'id_va', 'id_vis')
+
+data2=cbind(data, self_id_aic)
+
+
+data4reg=data2[data2$Group=='Parkinson',]
+data4reg=data4reg[!is.na(data4reg$DiseaseDur),]
+data4reg=data4reg[!is.na(data4reg$updrs2),]
+data4reg=data4reg[!is.na(data4reg$moca2),]
+data4reg=data4reg[!is.na(data4reg$HLU),]
+
+
+lm0=lm(updrs2 ~ Age + Education_coded+ DiseaseDur+ HLU + identifiability_aperiodic, data4reg)
+lm1=lm(updrs2 ~ Age + Education_coded+ DiseaseDur+ HLU +FOOOF_fit+ id_dmn, data4reg)
+lm2=lm(updrs2 ~ Age + Education_coded+ DiseaseDur+ HLU +FOOOF_fit+id_da, data4reg)
+lm3=lm(updrs2 ~ Age + Education_coded+ DiseaseDur+ HLU +FOOOF_fit+id_fp, data4reg)
+lm4=lm(updrs2 ~ Age + Education_coded+ DiseaseDur+ HLU +FOOOF_fit+id_limbic, data4reg)
+lm5=lm(updrs2 ~ Age + Education_coded+ DiseaseDur+ HLU +FOOOF_fit+id_sm, data4reg)
+lm6=lm(updrs2 ~ Age + Education_coded+ DiseaseDur+ HLU + FOOOF_fit+id_va, data4reg)
+lm7=lm(updrs2 ~ Age + Education_coded+ DiseaseDur+ HLU + FOOOF_fit+id_vis, data4reg)
+
+AIC(lm0)-AIC(lm1)
+AIC(lm0)-AIC(lm2)
+AIC(lm0)-AIC(lm3)
+AIC(lm0)-AIC(lm4)
+AIC(lm0)-AIC(lm5)
+AIC(lm0)-AIC(lm6)
+AIC(lm0)-AIC(lm7)
+
+
+data_AIC_network2= data.frame(network= c('id_dmn', 'id_da', 'id_fp', 'id_limbic', 'id_sm', 'id_va', 'id_vis'), AIC= AIC(lm0)-AIC(lm1,lm2,lm3, lm4,lm5,lm6,lm7)[,2], Experiment= 'aperiodic')
+
+data_AIC_network= rbind(data_AIC_network, data_AIC_network2)
+
+
+data_AIC_plot= data_AIC_network[data_AIC_network$Experiment=='spectrum',]
+
+ggplot(data=data_AIC_plot, aes(x=network, y=AIC, fill=Experiment, width=.5)) +  coord_cartesian(ylim=c(-10,1))+geom_bar(stat = "identity", position=position_dodge(width = 0.5)) +theme_classic2() + scale_fill_manual(values=cbbPalette) + labs(y="Δ AIC", x="",title="") + theme(text = element_text(size=35), legend.title=element_blank())
+
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/figure/AIC_networks_just_spectrum2.pdf', device = "pdf", width=15, height=8, dpi=800)
+
+
+data_AIC_plot= data_AIC_network[data_AIC_network$Experiment=='aperiodic',]
+
+ggplot(data=data_AIC_plot, aes(x=network, y=AIC, fill=Experiment, width=.5)) +  coord_cartesian(ylim=c(-10,1))+geom_bar(stat = "identity", position=position_dodge(width = 0.5)) +theme_classic2() + scale_fill_manual(values=cbbPalette[2]) + labs(y="Δ AIC", x="",title="") + theme(text = element_text(size=35), legend.title=element_blank())
+
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/figure/AIC_networks_just_aperiodic2.pdf', device = "pdf", width=15, height=8, dpi=800)
+
+
+```
+
+
+
+
+Use similar AIC approach to look at which regions are most importnat 
+
+
+```{r AIC ROI, warning=FALSE}
+
+data=read.csv('~/Desktop/Alex_fingerprinting/QPN_demo_with_fingerprinting_score_new.csv', stringsAsFactors = FALSE)
+
+data2=read.csv('~/Desktop/Alex_fingerprinting/BD_RPQ_UPDATE_Neuropsy_PD.csv', na.strings = c('NA', "Na", '999'), stringsAsFactors = FALSE)
+
+matched_id= data$SubjID[data$SubjID %in% data2$Patient..]
+
+data$moca2[data$SubjID %in% data2$Patient.. ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% data2$Patient..], matched_id[order(matched_id)], data2$MoCA..Raw.score.[data2$Patient.. %in% data$SubjID])
+data$updrs2[data$SubjID %in% data2$Patient.. ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% data2$Patient..], matched_id[order(matched_id)], data2$UPDRS.Score.part.3[data2$Patient.. %in% data$SubjID])
+
+data$moca2=as.numeric(data$moca2)
+data$updrs2=as.numeric(data$updrs2)
+
+motion = read.csv('~/Desktop/Alex_fingerprinting/QPN_motion_12132021_jason.csv', na.strings = 'NaN', stringsAsFactors = FALSE)
+
+matched_id2= data$SubjID[data$SubjID %in% motion$ID]
+
+
+data$ECG[data$SubjID %in% motion$ID ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% motion$ID], matched_id2[order(matched_id2)], motion$ECG[motion$ID %in% data$SubjID])
+
+data$EOG[data$SubjID %in% motion$ID ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% motion$ID], matched_id2[order(matched_id2)], motion$EOG[motion$ID %in% data$SubjID])
+
+
+data$HLU[data$SubjID %in% motion$ID ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% motion$ID], matched_id2[order(matched_id2)], motion$HLU[motion$ID %in% data$SubjID])
+
+
+data$ECG=as.numeric(data$ECG)
+data$EOG=as.numeric(data$EOG)
+data$HLU=as.numeric(data$HLU)
+
+diseasedur = read.csv('~/Desktop/Alex_fingerprinting/QPN_diseasedurations.csv', na.strings = 'NaN', stringsAsFactors = FALSE)
+colnames(diseasedur)[1]="IDs"
+matched_id2= data$SubjID[data$SubjID %in% diseasedur$IDs]
+
+data$DiseaseDur[data$SubjID %in% diseasedur$IDs ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% diseasedur$IDs], matched_id2[order(matched_id2)], diseasedur$DiseaseDurationSinceDiagnosis[diseasedur$IDs %in% data$SubjID])
+
+data$DiseaseDur=as.numeric(data$DiseaseDur)
+
+self_id_roi = read.csv('~/Desktop/Alex_fingerprinting/PD_ROI_self_identification_remove.csv', header = FALSE)
+self_id_roi=as.data.frame(t(self_id_roi))
+
+self_id_roi = cbind(data, self_id_roi)
+
+
+data4reg=self_id_roi[self_id_roi$Group=='Parkinson',]
+data4reg=data4reg[!is.na(data4reg$HLU),]
+data4reg=data4reg[!is.na(data4reg$updrs2),]
+data4reg=data4reg[!is.na(data4reg$moca2),]
+data4reg=data4reg[!is.na(data4reg$DiseaseDur),]
+
+
+lm2=lm(updrs2 ~ Age + Education_coded +   DiseaseDur+ HLU+ identifiability, data4reg)
+
+coef_AIC= matrix(, nrow = 68, ncol = 6)
+AIC= matrix(, nrow = 68, ncol = 1)
+AIC_lm2 = vector(mode = "list", length = 68)
+
+for (i in 1:68){
+  
+  lm_temp=lm(updrs2 ~ Age + Education_coded +   DiseaseDur+ HLU+ data4reg[,i+32], data4reg)
+  AIC_lm2[i]=lm_temp
+  tab=summary(lm_temp)
+  coef_AIC[i,]=tab$coefficients[,1]
+  AIC[i,1]=AIC(lm_temp)
+  
+}
+
+AIC(lm2) - AIC
+
+
+acc_roi= read.csv('~/Desktop/Alex_fingerprinting/PD_ROI_accuracy_remove.csv', header = FALSE)
+acc_roi=as.data.frame(t(acc_roi))
+acc_roi$ACC= rowMeans(acc_roi)
+
+df=read.csv('~/Desktop/Alex_fingerprinting/PSD_ICC_orig_PD_new_PKD2.csv', header = FALSE, stringsAsFactors = FALSE)
+colnames(df)[1]='region'
+df=df[,1:2]
+df$hemi =''
+df$hemi[seq(2,68,2)] ='right'
+df$hemi[seq(1,67,2)] ='left'
+df$ACC=AIC(lm2) - AIC
+
+df$region[(AIC(lm2) - AIC)<=-2]
+df$hemi[(AIC(lm2) - AIC)<=-2]
+
+df$ACC[(AIC(lm2) - AIC)<=-2]=-2
+
+someData2= df
+colnames(someData2)[2]='Fingerprinting accuracy'
+colnames(someData2)[1]='region'
+colnames(someData2)[3]='hemi'
+
+ggplot(someData2) +
+  geom_brain(atlas = dk, 
+             position = position_brain(hemi ~ side),
+             aes(fill = `ACC`)) +
+  #scale_fill_distiller(palette = "RdBu"
+  #                     , limits = c(0.4, 0.9))+
+  viridis::scale_fill_viridis(option = 'magma', limits=c(-2, 2 ))+
+  #scale_fill_gradient2(low="white", mid="#EC352F", high="#6C1917", 
+  #                     midpoint=0.6,   
+  #                     limits=c(0.4, 0.9 ))+
+  theme_void() 
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/ICC_output/ROI_AIC_PD.pdf', device = "pdf")
+
+
+```
+
+Adding interaction term between updrs score and moca shows interesting results...
+
+The UPDRS effect on identifiability seems to disappear too and instead we see an effect of the MOCA and a trending effect of their interaction (bit interaction still non sig) 
+
+
+```{r MOCA UPDRS Interaction effect }
+
+data=read.csv('~/Desktop/Alex_fingerprinting/QPN_demo_with_fingerprinting_score_new.csv', stringsAsFactors = FALSE)
+
+data2=read.csv('~/Desktop/Alex_fingerprinting/BD_RPQ_UPDATE_Neuropsy_PD.csv', na.strings = c('NA', "Na", '999'), stringsAsFactors = FALSE)
+
+matched_id= data$SubjID[data$SubjID %in% data2$Patient..]
+
+data$moca2[data$SubjID %in% data2$Patient.. ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% data2$Patient..], matched_id[order(matched_id)], data2$MoCA..Raw.score.[data2$Patient.. %in% data$SubjID])
+data$updrs2[data$SubjID %in% data2$Patient.. ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% data2$Patient..], matched_id[order(matched_id)], data2$UPDRS.Score.part.3[data2$Patient.. %in% data$SubjID])
+
+data$moca2=as.numeric(data$moca2)
+data$updrs2=as.numeric(data$updrs2)
+
+motion = read.csv('~/Desktop/Alex_fingerprinting/QPN_motion_12132021_jason.csv', na.strings = 'NaN', stringsAsFactors = FALSE)
+
+matched_id2= data$SubjID[data$SubjID %in% motion$ID]
+
+
+data$ECG[data$SubjID %in% motion$ID ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% motion$ID], matched_id2[order(matched_id2)], motion$ECG[motion$ID %in% data$SubjID])
+
+data$EOG[data$SubjID %in% motion$ID ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% motion$ID], matched_id2[order(matched_id2)], motion$EOG[motion$ID %in% data$SubjID])
+
+
+data$HLU[data$SubjID %in% motion$ID ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% motion$ID], matched_id2[order(matched_id2)], motion$HLU[motion$ID %in% data$SubjID])
+
+
+data$ECG=as.numeric(data$ECG)
+data$EOG=as.numeric(data$EOG)
+data$HLU=as.numeric(data$HLU)
+
+diseasedur = read.csv('~/Desktop/Alex_fingerprinting/QPN_diseasedurations.csv', na.strings = 'NaN', stringsAsFactors = FALSE)
+colnames(diseasedur)[1]="IDs"
+matched_id2= data$SubjID[data$SubjID %in% diseasedur$IDs]
+
+data$DiseaseDur[data$SubjID %in% diseasedur$IDs ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% diseasedur$IDs], matched_id2[order(matched_id2)], diseasedur$DiseaseDurationSinceDiagnosis[diseasedur$IDs %in% data$SubjID])
+
+data$DiseaseDur=as.numeric(data$DiseaseDur)
+
+colnames(diseasedur)[1]="IDs"
+matched_id2= data$SubjID[data$SubjID %in% diseasedur$IDs]
+
+data$DiseaseDur[data$SubjID %in% diseasedur$IDs ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% diseasedur$IDs], matched_id2[order(matched_id2)], diseasedur$DiseaseDurationSinceDiagnosis[diseasedur$IDs %in% data$SubjID])
+
+data$DiseaseDur=as.numeric(data$DiseaseDur)
+
+
+PD_validation_R2 = read.csv('~/Desktop/Alex_fingerprinting/PD_validation_R2.csv', na.strings = 'NaN', stringsAsFactors = FALSE, header = FALSE)
+
+PD_training_R2 = read.csv('~/Desktop/Alex_fingerprinting/PD_training_R2.csv', na.strings = 'NaN', stringsAsFactors = FALSE, header = FALSE)
+
+
+HC_validation_R2 = read.csv('~/Desktop/Alex_fingerprinting/HC_validation_R2.csv', na.strings = 'NaN', stringsAsFactors = FALSE, header = FALSE)
+
+HC_training_R2 = read.csv('~/Desktop/Alex_fingerprinting/HC_training_R2.csv', na.strings = 'NaN', stringsAsFactors = FALSE, header = FALSE)
+
+HC_R2= rowMeans(data.frame(colMeans(HC_training_R2), colMeans(HC_validation_R2)))
+
+PD_R2= rowMeans(data.frame(colMeans(PD_training_R2), colMeans(PD_validation_R2)))
+
+data$FOOOF_fit = c(HC_R2, PD_R2)
+
+data$FOOOF_fit= as.numeric(data$FOOOF_fit)
+
+data$moca_bin= data$moca2 <24
+data4reg=data[data$Group=='Parkinson',]
+data4reg=data4reg[!is.na(data4reg$HLU),]
+data4reg=data4reg[!is.na(data4reg$updrs2),]
+data4reg=data4reg[!is.na(data4reg$moca_bin),]
+data4reg=data4reg[!is.na(data4reg$DiseaseDur),]
+
+
+lm0=lm(identifiability ~ 1, data4reg)
+lm1=lm(identifiability ~ Age + Education_coded + DiseaseDur+ HLU, data4reg)
+lm2=lm(identifiability ~ Age + Education_coded + DiseaseDur+ HLU+  updrs2, data4reg)
+lm3=lm(identifiability ~ Age + Education_coded + DiseaseDur+ HLU+ updrs2+ moca_bin, data4reg)
+lm4=lm(identifiability ~ Age + Education_coded + DiseaseDur+ HLU+ updrs2+ moca_bin + updrs2*moca_bin, data4reg)
+
+anova(lm0,lm1,lm2,lm3,lm4)
+summary(lm4)
+sjPlot::tab_model(lm4)
+
+lmtemp1=lm(identifiability ~ Age + Education_coded + DiseaseDur+ HLU , data4reg)
+lmtemp2=lm(updrs2 ~ Age + Education_coded + DiseaseDur+ HLU , data4reg)
+resid2plot= data.frame(identifiability= lmtemp1$residuals, updrs = lmtemp2$residuals, moca_bin= data4reg$moca_bin )
+
+bf= generalTestBF(identifiability ~ Age + Education_coded + DiseaseDur+ HLU+ updrs2+ moca_bin + updrs2*moca_bin, data4reg, whichModels = "top")
+summary(bf)
+
+ggplot(resid2plot, aes(x=updrs , y = identifiability, fill=moca_bin)) + 
+  geom_jitter(aes(fill=moca_bin, colour = moca_bin)) + 
+  stat_smooth(method = "lm", colour = 'black',fullrange = T) +
+  labs(title = paste("Adj R2 = ", signif(summary(lm4)$adj.r.squared, 5),
+                     "Intercept =", signif(lm4$coef[[1]],5 ),
+                     " Slope =", signif(lm4$coef[[8]], 5),
+                     " P =", signif(summary(lm4)$coef[8,4], 5) )) + scale_color_manual(values=cbbPalette[c(4,6)]) + scale_fill_manual(values=cbbPalette[c(4,6)])  + theme_classic2() +   xlab("UPDRS residuals") + ylab("identifiability residuals")+
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14,face="bold")) 
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/figure/Regression_self_id_UPDRS_moca_interaction.pdf', device = "pdf", width=5, height=5, dpi=800)
+
+
+ggplot(resid2plot, aes(x=updrs , y = identifiability, fill=moca_bin)) + 
+  geom_jitter(aes(fill=moca_bin, colour = moca_bin)) + 
+  stat_smooth(method = "lm", colour = 'black',fullrange = T) +
+  labs(title = paste("Adj R2 = ", signif(summary(lm4)$adj.r.squared, 5),
+                     "Intercept =", signif(lm4$coef[[1]],5 ),
+                     " Slope =", signif(lm4$coef[[8]], 5),
+                     " P =", signif(summary(lm4)$coef[8,4], 5) )) + scale_color_manual(values=cbbPalette[c(4,6)]) + scale_fill_manual(values=cbbPalette[c(4,6)])  + theme_classic2() +   xlab("UPDRS residuals") + ylab("identifiability residuals")+
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14,face="bold"), legend.position = 'none') 
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/figure/Regression_self_id_UPDRS_moca_interaction_nolegend.pdf', device = "pdf", width=5, height=5, dpi=800)
+
+
+
+# look at aperiodic  
+
+lm0=lm(identifiability_aperiodic ~ 1, data4reg)
+lm1=lm(identifiability_aperiodic ~ Age + Education_coded + DiseaseDur+ HLU + FOOOF_fit, data4reg)
+lm2=lm(identifiability_aperiodic ~ Age + Education_coded + DiseaseDur+ HLU+ FOOOF_fit+ updrs2, data4reg)
+lm3=lm(identifiability_aperiodic ~ Age + Education_coded + DiseaseDur+ HLU+ FOOOF_fit+ updrs2+ moca_bin, data4reg)
+lm4=lm(identifiability_aperiodic ~ Age + Education_coded + DiseaseDur+ HLU+ FOOOF_fit + updrs2+ moca_bin + updrs2*moca_bin, data4reg)
+
+anova(lm0,lm1,lm2,lm3,lm4)
+summary(lm4)
+sjPlot::tab_model(lm4)
+
+bf= generalTestBF(identifiability_aperiodic ~ Age + Education_coded + DiseaseDur+ HLU+ FOOOF_fit + updrs2+ moca_bin + updrs2*moca_bin, data4reg, whichModels = "top")
+summary(bf)
+
+
+
+# look at corrected spectra 
+lm0=lm(identifiability_periodic_corr ~ 1, data4reg)
+lm1=lm(identifiability_periodic_corr ~ Age + Education_coded + DiseaseDur+ HLU +FOOOF_fit, data4reg)
+lm2=lm(identifiability_periodic_corr ~ Age + Education_coded + DiseaseDur+ HLU+ FOOOF_fit+ updrs2, data4reg)
+lm3=lm(identifiability_periodic_corr ~ Age + Education_coded + DiseaseDur+ HLU+ FOOOF_fit+updrs2+ moca_bin, data4reg)
+lm4=lm(identifiability_periodic_corr ~ Age + Education_coded + DiseaseDur+ HLU+ updrs2+ FOOOF_fit+moca_bin + updrs2*moca_bin, data4reg)
+
+anova(lm0,lm1,lm2,lm3,lm4)
+summary(lm4)
+sjPlot::tab_model(lm4)
+
+bf= generalTestBF(identifiability_periodic_corr ~ Age + Education_coded + DiseaseDur+ HLU+ updrs2+ FOOOF_fit+moca_bin + updrs2*moca_bin, data4reg, whichModels = "top")
+summary(bf)
+
+
+lmtemp1=lm(identifiability_periodic_corr ~ Age + Education_coded + DiseaseDur+ HLU + FOOOF_fit, data4reg)
+lmtemp2=lm(updrs2 ~ Age + Education_coded + DiseaseDur+ HLU + FOOOF_fit , data4reg)
+resid2plot= data.frame(identifiability= lmtemp1$residuals, updrs = lmtemp2$residuals, moca_bin= data4reg$moca_bin )
+
+
+ggplot(resid2plot, aes(x=updrs , y = identifiability, fill=moca_bin)) + 
+  geom_jitter(aes(fill=moca_bin, colour = moca_bin)) + 
+  stat_smooth(method = "lm", colour = 'black',fullrange = T) +
+  labs(title = paste("Adj R2 = ", signif(summary(lm4)$adj.r.squared, 5),
+                     "Intercept =", signif(lm4$coef[[1]],5 ),
+                     " Slope =", signif(lm4$coef[[8]], 5),
+                     " P =", signif(summary(lm4)$coef[8,4], 5) )) + scale_color_manual(values=cbbPalette[c(4,6)]) + scale_fill_manual(values=cbbPalette[c(4,6)])  + theme_classic2() +   xlab("UPDRS residuals") + ylab("identifiability residuals")+
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14,face="bold")) 
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/figure/Regression_corr_periodic_UPDRS_moca_interaction.pdf', device = "pdf", width=5, height=5, dpi=800)
+
+
+ggplot(resid2plot, aes(x=updrs , y = identifiability, fill=moca_bin)) + 
+  geom_jitter(aes(fill=moca_bin, colour = moca_bin)) + 
+  stat_smooth(method = "lm", colour = 'black',fullrange = T) +
+  labs(title = paste("Adj R2 = ", signif(summary(lm4)$adj.r.squared, 5),
+                     "Intercept =", signif(lm4$coef[[1]],5 ),
+                     " Slope =", signif(lm4$coef[[8]], 5),
+                     " P =", signif(summary(lm4)$coef[8,4], 5) )) + scale_color_manual(values=cbbPalette[c(4,6)]) + scale_fill_manual(values=cbbPalette[c(4,6)])  + theme_classic2() +   xlab("UPDRS residuals") + ylab("identifiability residuals")+
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14,face="bold"), legend.position = 'none') 
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/figure/Regression_corr_periodic_UPDRS_moca_interaction_nolegend.pdf', device = "pdf", width=5, height=5, dpi=800)
+
+
+
+```
+
+
+
+
+```{r AIC to look at frequency bands MOCA interaction}
+
+data=read.csv('~/Desktop/Alex_fingerprinting/QPN_demo_with_fingerprinting_score_new.csv', stringsAsFactors = FALSE)
+
+data2=read.csv('~/Desktop/Alex_fingerprinting/BD_RPQ_UPDATE_Neuropsy_PD.csv', na.strings = c('NA', "Na", '999'), stringsAsFactors = FALSE)
+
+matched_id= data$SubjID[data$SubjID %in% data2$Patient..]
+
+data$moca2[data$SubjID %in% data2$Patient.. ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% data2$Patient..], matched_id[order(matched_id)], data2$MoCA..Raw.score.[data2$Patient.. %in% data$SubjID])
+data$updrs2[data$SubjID %in% data2$Patient.. ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% data2$Patient..], matched_id[order(matched_id)], data2$UPDRS.Score.part.3[data2$Patient.. %in% data$SubjID])
+
+data$moca2=as.numeric(data$moca2)
+data$updrs2=as.numeric(data$updrs2)
+
+motion = read.csv('~/Desktop/Alex_fingerprinting/QPN_motion_12132021_jason.csv', na.strings = 'NaN', stringsAsFactors = FALSE)
+
+matched_id2= data$SubjID[data$SubjID %in% motion$ID]
+
+
+data$ECG[data$SubjID %in% motion$ID ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% motion$ID], matched_id2[order(matched_id2)], motion$ECG[motion$ID %in% data$SubjID])
+
+data$EOG[data$SubjID %in% motion$ID ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% motion$ID], matched_id2[order(matched_id2)], motion$EOG[motion$ID %in% data$SubjID])
+
+
+data$HLU[data$SubjID %in% motion$ID ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% motion$ID], matched_id2[order(matched_id2)], motion$HLU[motion$ID %in% data$SubjID])
+
+
+data$ECG=as.numeric(data$ECG)
+data$EOG=as.numeric(data$EOG)
+data$HLU=as.numeric(data$HLU)
+
+diseasedur = read.csv('~/Desktop/Alex_fingerprinting/QPN_diseasedurations.csv', na.strings = 'NaN', stringsAsFactors = FALSE)
+colnames(diseasedur)[1]="IDs"
+matched_id2= data$SubjID[data$SubjID %in% diseasedur$IDs]
+
+data$DiseaseDur[data$SubjID %in% diseasedur$IDs ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% diseasedur$IDs], matched_id2[order(matched_id2)], diseasedur$DiseaseDurationSinceDiagnosis[diseasedur$IDs %in% data$SubjID])
+
+data$DiseaseDur=as.numeric(data$DiseaseDur)
+
+colnames(diseasedur)[1]="IDs"
+matched_id2= data$SubjID[data$SubjID %in% diseasedur$IDs]
+
+data$DiseaseDur[data$SubjID %in% diseasedur$IDs ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% diseasedur$IDs], matched_id2[order(matched_id2)], diseasedur$DiseaseDurationSinceDiagnosis[diseasedur$IDs %in% data$SubjID])
+
+data$DiseaseDur=as.numeric(data$DiseaseDur)
+
+self_id_aic = read.csv('~/Desktop/Alex_fingerprinting/QPN_demo_with_fingerprinting_score_AIC_analysis.csv', na.strings = 'NaN', stringsAsFactors = FALSE)
+
+data=cbind(data, self_id_aic[,17:26])
+data$moca_bin= data$moca2 <24
+data4reg=data[data$Group=='Parkinson',]
+data4reg=data4reg[data4reg$moca_bin,]
+data4reg=data4reg[!is.na(data4reg$HLU),]
+data4reg=data4reg[!is.na(data4reg$updrs2),]
+data4reg=data4reg[!is.na(data4reg$moca_bin),]
+data4reg=data4reg[!is.na(data4reg$DiseaseDur),]
+
+
+lm0=lm(updrs2 ~ Age + Education_coded+ DiseaseDur+ HLU + identifiability, data4reg)
+lm1=lm(updrs2 ~ Age + Education_coded+ DiseaseDur+ HLU + self_id_remove_delta, data4reg)
+lm2=lm(updrs2 ~ Age + Education_coded+ DiseaseDur+ HLU +self_id_remove_theta, data4reg)
+lm3=lm(updrs2 ~ Age + Education_coded+ DiseaseDur+ HLU +self_id_remove_alpha, data4reg)
+lm4=lm(updrs2 ~ Age + Education_coded+ DiseaseDur+ HLU +self_id_remove_beta, data4reg)
+lm5=lm(updrs2 ~ Age + Education_coded+ DiseaseDur+ HLU +self_id_remove_gamma, data4reg)
+lm6=lm(updrs2 ~ Age + Education_coded+ DiseaseDur+ HLU + self_id_remove_highgamma, data4reg)
+
+AIC(lm0)-AIC(lm1)
+AIC(lm0)-AIC(lm2)
+AIC(lm0)-AIC(lm3)
+AIC(lm0)-AIC(lm4)
+AIC(lm0)-AIC(lm5)
+AIC(lm0)-AIC(lm6)
+
+
+data_AIC= data.frame(AIC= c(AIC(lm0)-AIC(lm1), AIC(lm0)-AIC(lm2), AIC(lm0)-AIC(lm3), AIC(lm0)-AIC(lm4),AIC(lm0)-AIC(lm5),AIC(lm0)-AIC(lm6)), AIC_labels= c('delta     ', 'theta     ', 'alpha     ', 'beta     ', 'gamma     ', 'high gamma'))
+
+ggplot(data = data_AIC, aes(x=2, y=AIC*5, fill = AIC_labels)) +
+  geom_col(position = "stack", width = 0.5,show.legend=FALSE) +
+  #geom_text(aes(label = round(AIC, digits = 2), x=1), position = position_stack(vjust = 0.5), size = 6) + 
+  geom_text(aes(label = AIC_labels, x=3.75), position = position_stack(vjust = 0.5), size = 5) +
+  xlim(0,5)+
+  coord_polar("y") + scale_fill_manual(values = cbbPalette) +
+  theme_void()
+
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/figure/Donut_Freq_spectrum_MOCA_MCI.pdf', device = "pdf", width=2, height=2, dpi=800)
+
+
+data4reg=data[data$Group=='Parkinson',]
+data4reg=data4reg[!data4reg$moca_bin,]
+data4reg=data4reg[!is.na(data4reg$HLU),]
+data4reg=data4reg[!is.na(data4reg$updrs2),]
+data4reg=data4reg[!is.na(data4reg$moca_bin),]
+data4reg=data4reg[!is.na(data4reg$DiseaseDur),]
+
+
+lm0=lm(updrs2 ~ Age + Education_coded+ DiseaseDur+ HLU + identifiability, data4reg)
+lm1=lm(updrs2 ~ Age + Education_coded+ DiseaseDur+ HLU + self_id_remove_delta, data4reg)
+lm2=lm(updrs2 ~ Age + Education_coded+ DiseaseDur+ HLU +self_id_remove_theta, data4reg)
+lm3=lm(updrs2 ~ Age + Education_coded+ DiseaseDur+ HLU +self_id_remove_alpha, data4reg)
+lm4=lm(updrs2 ~ Age + Education_coded+ DiseaseDur+ HLU +self_id_remove_beta, data4reg)
+lm5=lm(updrs2 ~ Age + Education_coded+ DiseaseDur+ HLU +self_id_remove_gamma, data4reg)
+lm6=lm(updrs2 ~ Age + Education_coded+ DiseaseDur+ HLU + self_id_remove_highgamma, data4reg)
+
+AIC(lm0)-AIC(lm1)
+AIC(lm0)-AIC(lm2)
+AIC(lm0)-AIC(lm3)
+AIC(lm0)-AIC(lm4)
+AIC(lm0)-AIC(lm5)
+AIC(lm0)-AIC(lm6)
+
+
+data_AIC= data.frame(AIC= c(AIC(lm0)-AIC(lm1), AIC(lm0)-AIC(lm2), AIC(lm0)-AIC(lm3), AIC(lm0)-AIC(lm4),AIC(lm0)-AIC(lm5),AIC(lm0)-AIC(lm6)), AIC_labels= c('delta     ', 'theta     ', 'alpha     ', 'beta     ', 'gamma     ', 'high gamma'))
+
+ggplot(data = data_AIC, aes(x=2, y=AIC*5, fill = AIC_labels)) +
+  geom_col(position = "stack", width = 0.5,show.legend=FALSE) +
+  #geom_text(aes(label = round(AIC, digits = 2), x=1), position = position_stack(vjust = 0.5), size = 6) + 
+  geom_text(aes(label = AIC_labels, x=3.75), position = position_stack(vjust = 0.5), size = 5) +
+  xlim(0,5)+
+  coord_polar("y") + scale_fill_manual(values = cbbPalette) +
+  theme_void()
+
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/figure/Donut_Freq_spectrum_MOCA_noMCI.pdf', device = "pdf", width=2, height=2, dpi=800)
+```
+
+Only non cognitively impaired individuals show a strong relationship between ROI and fit
+Same region Left superior Parietal highlighted 
+
+
+```{r Moca interaction  ROI, warning=FALSE}
+
+data$moca_bin= data$moca2 <24
+self_id_roi = read.csv('~/Desktop/Alex_fingerprinting/PD_ROI_self_identification_remove.csv', header = FALSE)
+self_id_roi=as.data.frame(t(self_id_roi))
+
+self_id_roi = cbind(data, self_id_roi)
+
+data4reg=self_id_roi[self_id_roi$Group=='Parkinson',]
+data4reg=data4reg[data4reg$moca_bin,]
+data4reg=data4reg[!is.na(data4reg$HLU),]
+data4reg=data4reg[!is.na(data4reg$updrs2),]
+data4reg=data4reg[!is.na(data4reg$moca_bin),]
+data4reg=data4reg[!is.na(data4reg$DiseaseDur),]
+
+
+lm2=lm(updrs2 ~ Age + Education_coded +   DiseaseDur+ HLU+ identifiability, data4reg)
+
+coef_AIC= matrix(, nrow = 68, ncol = 6)
+AIC= matrix(, nrow = 68, ncol = 1)
+AIC_lm2 = vector(mode = "list", length = 68)
+
+for (i in 1:68){
+  
+  lm_temp=lm(updrs2 ~ Age + Education_coded +   DiseaseDur+ HLU+ data4reg[,i+33], data4reg)
+  AIC_lm2[i]=lm_temp
+  tab=summary(lm_temp)
+  coef_AIC[i,]=tab$coefficients[,1]
+  AIC[i,1]=AIC(lm_temp)
+  
+}
+
+AIC(lm2) - AIC
+
+
+df=read.csv('~/Desktop/Alex_fingerprinting/PSD_ICC_orig_PD_new_PKD2.csv', header = FALSE, stringsAsFactors = FALSE)
+colnames(df)[1]='region'
+df=df[,1:2]
+df$hemi =''
+df$hemi[seq(2,68,2)] ='right'
+df$hemi[seq(1,67,2)] ='left'
+df$ACC=AIC(lm2) - AIC
+
+df$region[(AIC(lm2) - AIC)<=-2]
+df$hemi[(AIC(lm2) - AIC)<=-2]
+
+
+data4reg=self_id_roi[self_id_roi$Group=='Parkinson',]
+data4reg=data4reg[!data4reg$moca_bin,]
+data4reg=data4reg[!is.na(data4reg$HLU),]
+data4reg=data4reg[!is.na(data4reg$updrs2),]
+data4reg=data4reg[!is.na(data4reg$moca_bin),]
+data4reg=data4reg[!is.na(data4reg$DiseaseDur),]
+
+
+lm2=lm(updrs2 ~ Age + Education_coded +   DiseaseDur+ HLU+ identifiability, data4reg)
+
+coef_AIC= matrix(, nrow = 68, ncol = 6)
+AIC= matrix(, nrow = 68, ncol = 1)
+AIC_lm2 = vector(mode = "list", length = 68)
+
+for (i in 1:68){
+  
+  lm_temp=lm(updrs2 ~ Age + Education_coded +   DiseaseDur+ HLU+ data4reg[,i+33], data4reg)
+  AIC_lm2[i]=lm_temp
+  tab=summary(lm_temp)
+  coef_AIC[i,]=tab$coefficients[,1]
+  AIC[i,1]=AIC(lm_temp)
+  
+}
+
+AIC(lm2) - AIC
+
+
+```
+
+
+```{r aperiodic  ROI, warning=FALSE}
+
+
+data=read.csv('~/Desktop/Alex_fingerprinting/QPN_demo_with_fingerprinting_score_new.csv', stringsAsFactors = FALSE)
+
+data2=read.csv('~/Desktop/Alex_fingerprinting/BD_RPQ_UPDATE_Neuropsy_PD.csv', na.strings = c('NA', "Na", '999'), stringsAsFactors = FALSE)
+
+matched_id= data$SubjID[data$SubjID %in% data2$Patient..]
+
+data$moca2[data$SubjID %in% data2$Patient.. ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% data2$Patient..], matched_id[order(matched_id)], data2$MoCA..Raw.score.[data2$Patient.. %in% data$SubjID])
+data$updrs2[data$SubjID %in% data2$Patient.. ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% data2$Patient..], matched_id[order(matched_id)], data2$UPDRS.Score.part.3[data2$Patient.. %in% data$SubjID])
+
+data$moca2=as.numeric(data$moca2)
+data$updrs2=as.numeric(data$updrs2)
+
+motion = read.csv('~/Desktop/Alex_fingerprinting/QPN_motion_12132021_jason.csv', na.strings = 'NaN', stringsAsFactors = FALSE)
+
+matched_id2= data$SubjID[data$SubjID %in% motion$ID]
+
+
+data$ECG[data$SubjID %in% motion$ID ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% motion$ID], matched_id2[order(matched_id2)], motion$ECG[motion$ID %in% data$SubjID])
+
+data$EOG[data$SubjID %in% motion$ID ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% motion$ID], matched_id2[order(matched_id2)], motion$EOG[motion$ID %in% data$SubjID])
+
+
+data$HLU[data$SubjID %in% motion$ID ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% motion$ID], matched_id2[order(matched_id2)], motion$HLU[motion$ID %in% data$SubjID])
+
+
+data$ECG=as.numeric(data$ECG)
+data$EOG=as.numeric(data$EOG)
+data$HLU=as.numeric(data$HLU)
+
+diseasedur = read.csv('~/Desktop/Alex_fingerprinting/QPN_diseasedurations.csv', na.strings = 'NaN', stringsAsFactors = FALSE)
+colnames(diseasedur)[1]="IDs"
+matched_id2= data$SubjID[data$SubjID %in% diseasedur$IDs]
+
+data$DiseaseDur[data$SubjID %in% diseasedur$IDs ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% diseasedur$IDs], matched_id2[order(matched_id2)], diseasedur$DiseaseDurationSinceDiagnosis[diseasedur$IDs %in% data$SubjID])
+
+data$DiseaseDur=as.numeric(data$DiseaseDur)
+
+colnames(diseasedur)[1]="IDs"
+matched_id2= data$SubjID[data$SubjID %in% diseasedur$IDs]
+
+data$DiseaseDur[data$SubjID %in% diseasedur$IDs ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% diseasedur$IDs], matched_id2[order(matched_id2)], diseasedur$DiseaseDurationSinceDiagnosis[diseasedur$IDs %in% data$SubjID])
+
+data$DiseaseDur=as.numeric(data$DiseaseDur)
+
+
+PD_validation_R2 = read.csv('~/Desktop/Alex_fingerprinting/PD_validation_R2.csv', na.strings = 'NaN', stringsAsFactors = FALSE, header = FALSE)
+
+PD_training_R2 = read.csv('~/Desktop/Alex_fingerprinting/PD_training_R2.csv', na.strings = 'NaN', stringsAsFactors = FALSE, header = FALSE)
+
+
+HC_validation_R2 = read.csv('~/Desktop/Alex_fingerprinting/HC_validation_R2.csv', na.strings = 'NaN', stringsAsFactors = FALSE, header = FALSE)
+
+HC_training_R2 = read.csv('~/Desktop/Alex_fingerprinting/HC_training_R2.csv', na.strings = 'NaN', stringsAsFactors = FALSE, header = FALSE)
+
+HC_R2= rowMeans(data.frame(colMeans(HC_training_R2), colMeans(HC_validation_R2)))
+
+PD_R2= rowMeans(data.frame(colMeans(PD_training_R2), colMeans(PD_validation_R2)))
+
+data$FOOOF_fit = c(HC_R2, PD_R2)
+
+data$FOOOF_fit= as.numeric(data$FOOOF_fit)
+
+
+self_id_roi = read.csv('~/Desktop/Alex_fingerprinting/PD_ROI_self_identification_remove_aperiodic.csv', header = FALSE)
+self_id_roi=as.data.frame(t(self_id_roi))
+
+self_id_roi = cbind(data, self_id_roi)
+
+
+data4reg=self_id_roi[self_id_roi$Group=='Parkinson',]
+data4reg=data4reg[!is.na(data4reg$HLU),]
+data4reg=data4reg[!is.na(data4reg$updrs2),]
+data4reg=data4reg[!is.na(data4reg$moca2),]
+data4reg=data4reg[!is.na(data4reg$DiseaseDur),]
+
+
+lm2=lm(updrs2 ~ Age + Education_coded +   DiseaseDur+ HLU+ FOOOF_fit+ identifiability_aperiodic, data4reg)
+
+coef_AIC= matrix(, nrow = 68, ncol = 7)
+AIC= matrix(, nrow = 68, ncol = 1)
+AIC_lm2 = vector(mode = "list", length = 68)
+
+for (i in 1:68){
+  
+  lm_temp=lm(updrs2 ~ Age + Education_coded +   DiseaseDur+ HLU+ FOOOF_fit+ data4reg[,i+33], data4reg)
+  AIC_lm2[i]=lm_temp
+  tab=summary(lm_temp)
+  coef_AIC[i,]=tab$coefficients[,1]
+  AIC[i,1]=AIC(lm_temp)
+  
+}
+
+AIC(lm2) - AIC
+
+
+acc_roi= read.csv('~/Desktop/Alex_fingerprinting/PD_ROI_accuracy_remove_aperiodic.csv', header = FALSE)
+
+acc_roi=as.data.frame(t(acc_roi))
+acc_roi$ACC= rowMeans(acc_roi)
+
+df=read.csv('~/Desktop/Alex_fingerprinting/PSD_ICC_orig_PD_new_PKD2.csv', header = FALSE, stringsAsFactors = FALSE)
+colnames(df)[1]='region'
+df=df[,1:2]
+df$hemi =''
+df$hemi[seq(2,68,2)] ='right'
+df$hemi[seq(1,67,2)] ='left'
+df$ACC=AIC(lm2) - AIC
+
+df$region[(AIC(lm2) - AIC)<=-2]
+df$hemi[(AIC(lm2) - AIC)<=-2]
+#df$ACC[(AIC(lm2) - AIC)<=-2] = 
+
+someData2= df
+colnames(someData2)[2]='Fing Acc'
+colnames(someData2)[1]='region'
+colnames(someData2)[3]='hemi'
+
+ggplot(someData2) +
+  geom_brain(atlas = dk, 
+             position = position_brain(hemi ~ side),
+             aes(fill = `ACC`)) +
+  #scale_fill_distiller(palette = "RdBu"
+  #                     , limits = c(0.4, 0.9))+
+  viridis::scale_fill_viridis(option = 'magma')+
+  #scale_fill_gradient2(low="white", mid="#EC352F", high="#6C1917", 
+  #                     midpoint=0.6,   
+  #                     limits=c(0.4, 0.9 ))+
+  theme_void() 
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/ICC_output/ROI_AIC_PD_aperiodic.pdf', device = "pdf")
+
+
+
+```
+
+
+
+Plot ICC results from fingerprinting over atlas
+
+```{r Intraclass correlations}
+
+
+someData <- tibble(
+  region = rep(c("transverse temporal", "insula",
+                 "precentral","superior parietal"), 2), 
+  p = sample(seq(0.5,1,.01), 8),
+  groups = c(rep("g1", 4), rep("g2", 4))
+)
+
+df=read.csv('~/Desktop/Alex_fingerprinting/PSD_ICC_orig_PD_new_PKD2.csv', header = FALSE, stringsAsFactors = FALSE)
+colnames(df)[1]='region'
+df$hemi =''
+df$hemi[seq(2,68,2)] ='right' 
+df$hemi[seq(1,67,2)] ='left'
+
+# Parkinsons
+someData= tibble(df$region, rowMeans(df[,152:452]), df$hemi)
+colnames(someData)[2]='ICC'
+colnames(someData)[1]='region'
+colnames(someData)[3]='hemi'
+someData$ICC[someData$ICC<0.4]=0.4
+someData$ICC[someData$ICC>0.9]=0.9
+someData$band= 'High gamma'
+someData2= tibble(df$region, rowMeans(df[,92:151]), df$hemi)
+colnames(someData2)[2]='ICC'
+colnames(someData2)[1]='region'
+colnames(someData2)[3]='hemi'
+someData2$ICC[someData2$ICC<0.4]=0.4
+someData2$ICC[someData2$ICC>0.9]=0.9
+someData2$band= 'Gamma'
+someData=rbind(someData,someData2)
+someData2= tibble(df$region, rowMeans(df[,41:91]), df$hemi)
+colnames(someData2)[2]='ICC'
+colnames(someData2)[1]='region'
+colnames(someData2)[3]='hemi'
+someData2$ICC[someData2$ICC<0.4]=0.4
+someData2$ICC[someData2$ICC>0.9]=0.9
+someData2$band= 'Beta'
+someData=rbind(someData,someData2)
+someData2= tibble(df$region, rowMeans(df[,26:40]), df$hemi)
+colnames(someData2)[2]='ICC'
+colnames(someData2)[1]='region'
+colnames(someData2)[3]='hemi'
+someData2$ICC[someData2$ICC<0.4]=0.4
+someData2$ICC[someData2$ICC>0.9]=0.9
+someData2$band= 'Alpha'
+someData=rbind(someData,someData2)
+someData2= tibble(df$region, rowMeans(df[,14:26]), df$hemi)
+colnames(someData2)[2]='ICC'
+colnames(someData2)[1]='region'
+colnames(someData2)[3]='hemi'
+someData2$ICC[someData2$ICC<0.4]=0.4
+someData2$ICC[someData2$ICC>0.9]=0.9
+someData2$band= 'Theta'
+someData=rbind(someData,someData2)
+someData2= tibble(df$region, rowMeans(df[,2:13]), df$hemi)
+colnames(someData2)[2]='ICC'
+colnames(someData2)[1]='region'
+colnames(someData2)[3]='hemi'
+someData2$ICC[someData2$ICC<0.4]=0.4
+someData2$ICC[someData2$ICC>0.9]=0.9
+someData2$band= 'Delta'
+someData=rbind(someData,someData2)
+
+someData$band= ordered(someData$band, levels= c("Delta", "Theta", "Alpha", "Beta", "Gamma", "High gamma"))
+someData= someData[!is.na(someData$band),]
+ggplot(someData) +
+  geom_brain(atlas = dk, 
+             position = position_brain(hemi ~ side),
+             aes(fill = ICC)) + viridis::scale_fill_viridis(option = 'magma',limits=c(0.4, 1 ))+ theme_void() + facet_wrap(~band)
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/ICC_output/ICC_fullbands_PD_new.pdf', device = "pdf")
+
+
+
+#### Health controls
+
+df=read.csv('~/Desktop/Alex_fingerprinting/PSD_ICC_orig_PD_new_CTL2.csv', header = FALSE, stringsAsFactors = FALSE)
+colnames(df)[1]='region'
+df$hemi =''
+df$hemi[seq(2,68,2)] ='right'
+df$hemi[seq(1,67,2)] ='left'
+
+# fullband
+someData= tibble(df$region, rowMeans(df[,152:452]), df$hemi)
+colnames(someData)[2]='ICC'
+colnames(someData)[1]='region'
+colnames(someData)[3]='hemi'
+someData$ICC[someData$ICC<0.4]=0.4
+someData$ICC[someData$ICC>0.9]=0.9
+someData$band= 'High gamma'
+someData2= tibble(df$region, rowMeans(df[,92:151]), df$hemi)
+colnames(someData2)[2]='ICC'
+colnames(someData2)[1]='region'
+colnames(someData2)[3]='hemi'
+someData2$ICC[someData2$ICC<0.4]=0.4
+someData2$ICC[someData2$ICC>0.9]=0.9
+someData2$band= 'Gamma'
+someData=rbind(someData,someData2)
+someData2= tibble(df$region, rowMeans(df[,41:91]), df$hemi)
+colnames(someData2)[2]='ICC'
+colnames(someData2)[1]='region'
+colnames(someData2)[3]='hemi'
+someData2$ICC[someData2$ICC<0.4]=0.4
+someData2$ICC[someData2$ICC>0.9]=0.9
+someData2$band= 'Beta'
+someData=rbind(someData,someData2)
+someData2= tibble(df$region, rowMeans(df[,26:40]), df$hemi)
+colnames(someData2)[2]='ICC'
+colnames(someData2)[1]='region'
+colnames(someData2)[3]='hemi'
+someData2$ICC[someData2$ICC<0.4]=0.4
+someData2$ICC[someData2$ICC>0.9]=0.9
+someData2$band= 'Alpha'
+someData=rbind(someData,someData2)
+someData2= tibble(df$region, rowMeans(df[,14:26]), df$hemi)
+colnames(someData2)[2]='ICC'
+colnames(someData2)[1]='region'
+colnames(someData2)[3]='hemi'
+someData2$ICC[someData2$ICC<0.4]=0.4
+someData2$ICC[someData2$ICC>0.9]=0.9
+someData2$band= 'Theta'
+someData=rbind(someData,someData2)
+someData2= tibble(df$region, rowMeans(df[,2:13]), df$hemi)
+colnames(someData2)[2]='ICC'
+colnames(someData2)[1]='region'
+colnames(someData2)[3]='hemi'
+someData2$ICC[someData2$ICC<0.4]=0.4
+someData2$ICC[someData2$ICC>0.9]=0.9
+someData2$band= 'Delta'
+someData=rbind(someData,someData2)
+
+someData$band= ordered(someData$band, levels= c("Delta", "Theta", "Alpha", "Beta", "Gamma", "High gamma"))
+someData= someData[!is.na(someData$band),]
+ggplot(someData) +
+  geom_brain(atlas = dk, 
+             position = position_brain(hemi ~ side),
+             aes(fill = ICC)) +
+  viridis::scale_fill_viridis(option = 'magma',limits=c(0.4, 1 ))+
+  theme_void() + facet_wrap(~band)
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/ICC_output/ICC_fullbands_ctl_new.pdf', device = "pdf")
+
+
+
+
+
+#### everyone
+
+df=read.csv('~/Desktop/Alex_fingerprinting/PSD_ICC_orig_PD_new_FUL2.csv', header = FALSE, stringsAsFactors = FALSE)
+colnames(df)[1]='region'
+df$hemi =''
+df$hemi[seq(2,68,2)] ='right'
+df$hemi[seq(1,67,2)] ='left'
+
+# fullband
+someData= tibble(df$region, rowMeans(df[,152:452]), df$hemi)
+colnames(someData)[2]='ICC'
+colnames(someData)[1]='region'
+colnames(someData)[3]='hemi'
+someData$ICC[someData$ICC<0.4]=0.4
+someData$ICC[someData$ICC>0.9]=0.9
+someData$band= 'High gamma'
+someData2= tibble(df$region, rowMeans(df[,92:151]), df$hemi)
+colnames(someData2)[2]='ICC'
+colnames(someData2)[1]='region'
+colnames(someData2)[3]='hemi'
+someData2$ICC[someData2$ICC<0.4]=0.4
+someData2$ICC[someData2$ICC>0.9]=0.9
+someData2$band= 'Gamma'
+someData=rbind(someData,someData2)
+someData2= tibble(df$region, rowMeans(df[,41:91]), df$hemi)
+colnames(someData2)[2]='ICC'
+colnames(someData2)[1]='region'
+colnames(someData2)[3]='hemi'
+someData2$ICC[someData2$ICC<0.4]=0.4
+someData2$ICC[someData2$ICC>0.9]=0.9
+someData2$band= 'Beta'
+someData=rbind(someData,someData2)
+someData2= tibble(df$region, rowMeans(df[,26:40]), df$hemi)
+colnames(someData2)[2]='ICC'
+colnames(someData2)[1]='region'
+colnames(someData2)[3]='hemi'
+someData2$ICC[someData2$ICC<0.4]=0.4
+someData2$ICC[someData2$ICC>0.9]=0.9
+someData2$band= 'Alpha'
+someData=rbind(someData,someData2)
+someData2= tibble(df$region, rowMeans(df[,14:26]), df$hemi)
+colnames(someData2)[2]='ICC'
+colnames(someData2)[1]='region'
+colnames(someData2)[3]='hemi'
+someData2$ICC[someData2$ICC<0.4]=0.4
+someData2$ICC[someData2$ICC>0.9]=0.9
+someData2$band= 'Theta'
+someData=rbind(someData,someData2)
+someData2= tibble(df$region, rowMeans(df[,2:13]), df$hemi)
+colnames(someData2)[2]='ICC'
+colnames(someData2)[1]='region'
+colnames(someData2)[3]='hemi'
+someData2$ICC[someData2$ICC<0.4]=0.4
+someData2$ICC[someData2$ICC>0.9]=0.9
+someData2$band= 'Delta'
+someData=rbind(someData,someData2)
+
+someData$band= ordered(someData$band, levels= c("Delta", "Theta", "Alpha", "Beta", "Gamma", "High gamma"))
+someData= someData[!is.na(someData$band),]
+ggplot(someData) +
+  geom_brain(atlas = dk, 
+             position = position_brain(hemi ~ side),
+             aes(fill = ICC)) +
+  #scale_fill_distiller(palette = "RdBu"
+  #                     , limits = c(0.4, 0.9))+
+  viridis::scale_fill_viridis(option = 'magma',limits=c(0.4, 1 ))+
+  #scale_fill_gradient2(low="white", mid="#EC352F", high="#6C1917", 
+  #                     midpoint=0.6,   
+  #                     limits=c(0.4, 0.9 ))+
+  theme_void() + facet_wrap(~band)
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/ICC_output/ICC_fullbands_everyone_new.pdf', device = "pdf")
+
+
+
+
+
+#### diff in ICC between PD and CTLS
+df=read.csv('~/Desktop/Alex_fingerprinting/PSD_ICC_orig_PD_new_CTL2.csv', header = FALSE, stringsAsFactors = FALSE)
+df2=read.csv('~/Desktop/Alex_fingerprinting/PSD_ICC_orig_PD_new_PKD2.csv', header = FALSE, stringsAsFactors = FALSE)
+df[,2:452]=df2[,2:452]-df[,2:452]
+colnames(df)[1]='region'
+df$hemi =''
+df$hemi[seq(2,68,2)] ='right'
+df$hemi[seq(1,67,2)] ='left'
+
+# fullband
+someData= tibble(df$region, rowMeans(df[,152:452]), df$hemi)
+colnames(someData)[2]='ICC'
+colnames(someData)[1]='region'
+colnames(someData)[3]='hemi'
+someData$ICC[someData$ICC< -0.5]=-0.5
+someData$ICC[someData$ICC>0.5]=0.5
+someData$band= 'High gamma'
+someData2= tibble(df$region, rowMeans(df[,92:151]), df$hemi)
+colnames(someData2)[2]='ICC'
+colnames(someData2)[1]='region'
+colnames(someData2)[3]='hemi'
+someData2$ICC[someData2$ICC< -0.5]=-0.5
+someData2$ICC[someData2$ICC>0.5]=0.5
+someData2$band= 'Gamma'
+someData=rbind(someData,someData2)
+someData2= tibble(df$region, rowMeans(df[,41:91]), df$hemi)
+colnames(someData2)[2]='ICC'
+colnames(someData2)[1]='region'
+colnames(someData2)[3]='hemi'
+someData2$ICC[someData2$ICC< -0.5]=-0.5
+someData2$ICC[someData2$ICC>0.5]=0.5
+someData2$band= 'Beta'
+someData=rbind(someData,someData2)
+someData2= tibble(df$region, rowMeans(df[,26:40]), df$hemi)
+colnames(someData2)[2]='ICC'
+colnames(someData2)[1]='region'
+colnames(someData2)[3]='hemi'
+someData2$ICC[someData2$ICC< -0.5]=-0.5
+someData2$ICC[someData2$ICC>0.5]=0.5
+someData2$band= 'Alpha'
+someData=rbind(someData,someData2)
+someData2= tibble(df$region, rowMeans(df[,14:26]), df$hemi)
+colnames(someData2)[2]='ICC'
+colnames(someData2)[1]='region'
+colnames(someData2)[3]='hemi'
+someData2$ICC[someData2$ICC< -0.5]=-0.5
+someData2$ICC[someData2$ICC>0.5]=0.5
+someData2$band= 'Theta'
+someData=rbind(someData,someData2)
+someData2= tibble(df$region, rowMeans(df[,2:13]), df$hemi)
+colnames(someData2)[2]='ICC'
+colnames(someData2)[1]='region'
+colnames(someData2)[3]='hemi'
+someData2$ICC[someData2$ICC< -0.5]=-0.5
+someData2$ICC[someData2$ICC>0.5]=0.5
+someData2$band= 'Delta'
+someData=rbind(someData,someData2)
+
+someData$band= ordered(someData$band, levels= c("Delta", "Theta", "Alpha", "Beta", "Gamma", "High gamma"))
+someData= someData[!is.na(someData$band),]
+ggplot(someData) +
+  geom_brain(atlas = dk, 
+             position = position_brain(hemi ~ side),
+             aes(fill = ICC)) +
+  #viridis::scale_fill_viridis(option = 'magma',limits=c(-0.5, 0.5 ))+
+    scale_fill_gradient2(low = "#67309A", mid = "#FCF7F4", high = "#EC7A48", midpoint = 0.0) +
+  theme_void() + facet_wrap(~band)
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/ICC_output/ICC_fullbands_diff_PD_minus_CTL.pdf', device = "pdf")
+
+
+```
+
+Now let us compare this to cortical thickness measures we see in PD
+
+```{r ICC and cortical thickness}
+thicc=read.csv('~/Desktop/Alex_fingerprinting/Alex_cortical/thiccness_data.csv', stringsAsFactors = FALSE, na.strings = 0, header = FALSE)
+thicc_ids= read.csv('~/Desktop/Alex_fingerprinting/Alex_cortical/thiccness_ids.csv', stringsAsFactors = FALSE, na.strings = 0, header = FALSE)
+
+index= data$SubjID %in% thicc_ids$V1
+demo=data[index,]
+
+thicc=thicc[,thicc_ids$V1 %in% data$SubjID]
+thicc_ids=thicc_ids[thicc_ids$V1 %in% data$SubjID,]
+demo=demo[match(thicc_ids, demo$SubjID),]
+
+
+thicc_zcore= (thicc - rowMeans(thicc[,demo$Group=='Control']))/apply(thicc[,demo$Group=='Control'],1, sd, na.rm = TRUE)
+
+dka_thicc= rowMeans(thicc_zcore[,demo$Group=='Parkinson'])
+
+
+df=read.csv('~/Desktop/Alex_fingerprinting/PSD_ICC_orig_PD_new_PKD2.csv', header = FALSE, stringsAsFactors = FALSE)
+colnames(df)[1]='region'
+df=df[,1:2]
+df$hemi =''
+df$hemi[seq(2,68,2)] ='right'
+df$hemi[seq(1,67,2)] ='left'
+df$V2=dka_thicc
+
+
+someData2= df
+colnames(someData2)[2]='Cortical thickness'
+colnames(someData2)[1]='region'
+colnames(someData2)[3]='hemi'
+
+ggplot(someData2) +
+  geom_brain(atlas = dk, 
+             position = position_brain(hemi ~ side),
+             aes(fill = `Cortical thickness`)) +
+  #scale_fill_distiller(palette = "RdBu"
+  #                     , limits = c(0.4, 0.9))+
+  viridis::scale_fill_viridis(option = 'magma')+
+  #scale_fill_gradient2(low="white", mid="#EC352F", high="#6C1917", 
+  #                     midpoint=0.6,   
+  #                     limits=c(0.4, 0.9 ))+
+  theme_void() 
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/ICC_output/cortical_thiccness_PD_zscore_change.pdf', device = "pdf")
+
+
+dka_thicc= rowMeans(thicc[,demo$Group=='Control'])
+
+df=read.csv('~/Desktop/Alex_fingerprinting/PSD_ICC_orig_PD_new_PKD2.csv', header = FALSE, stringsAsFactors = FALSE)
+colnames(df)[1]='region'
+df=df[,1:2]
+df$hemi =''
+df$hemi[seq(2,68,2)] ='right'
+df$hemi[seq(1,67,2)] ='left'
+df$V2=dka_thicc
+
+
+someData2= df
+colnames(someData2)[2]='Cortical thickness'
+colnames(someData2)[1]='region'
+colnames(someData2)[3]='hemi'
+
+ggplot(someData2) +
+  geom_brain(atlas = dk, 
+             position = position_brain(hemi ~ side),
+             aes(fill = `Cortical thickness`)) +
+  #scale_fill_distiller(palette = "RdBu"
+  #                     , limits = c(0.4, 0.9))+
+  viridis::scale_fill_viridis(option = 'magma')+
+  #scale_fill_gradient2(low="white", mid="#EC352F", high="#6C1917", 
+  #                     midpoint=0.6,   
+  #                     limits=c(0.4, 0.9 ))+
+  theme_void() 
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/ICC_output/cortical_thiccness_control_avg.pdf', device = "pdf")
+
+
+dka_thicc= rowMeans(thicc[,demo$Group=='Parkinson'])
+
+df=read.csv('~/Desktop/Alex_fingerprinting/PSD_ICC_orig_PD_new_PKD2.csv', header = FALSE, stringsAsFactors = FALSE)
+colnames(df)[1]='region'
+df=df[,1:2]
+df$hemi =''
+df$hemi[seq(2,68,2)] ='right'
+df$hemi[seq(1,67,2)] ='left'
+df$V2=dka_thicc
+
+
+someData2= df
+colnames(someData2)[2]='Cortical thickness'
+colnames(someData2)[1]='region'
+colnames(someData2)[3]='hemi'
+
+ggplot(someData2) +
+  geom_brain(atlas = dk, 
+             position = position_brain(hemi ~ side),
+             aes(fill = `Cortical thickness`)) +
+  #scale_fill_distiller(palette = "RdBu"
+  #                     , limits = c(0.4, 0.9))+
+  viridis::scale_fill_viridis(option = 'magma')+
+  #scale_fill_gradient2(low="white", mid="#EC352F", high="#6C1917", 
+  #                     midpoint=0.6,   
+  #                     limits=c(0.4, 0.9 ))+
+  theme_void() 
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/ICC_output/cortical_thiccness_PD_avg.pdf', device = "pdf")
+
+df=read.csv('~/Desktop/Alex_fingerprinting/PSD_ICC_orig_PD_new_PKD2.csv', header = FALSE, stringsAsFactors = FALSE)
+df2=read.csv('~/Desktop/Alex_fingerprinting/PSD_ICC_orig_PD_new_PKD2.csv', header = FALSE, stringsAsFactors = FALSE)
+colnames(df)[1]='region'
+df$hemi =''
+df$hemi[seq(2,68,2)] ='right'
+df$hemi[seq(1,67,2)] ='left'
+
+someData= tibble(df$region, rowMeans(df[,2:452]), df$hemi)
+colnames(someData)[2]='ICC'
+colnames(someData)[1]='region'
+colnames(someData)[3]='hemi'
+
+# scatter plot
+someData_scatter= tibble(df$region, someData$ICC, someData2$`Cortical thickness`)
+colnames(someData_scatter)[2]='ICC'
+colnames(someData_scatter)[1]='region'
+colnames(someData_scatter)[3]='Cortical thickness'
+
+lm3=lm(`Cortical thickness` ~ ICC +1, someData_scatter)
+summary(lm3)
+sjPlot::tab_model(lm3)
+
+ggplot(someData_scatter, aes(x=ICC , y = `Cortical thickness`, fill=cbbPalette[6])) + 
+  geom_jitter(colour = cbbPalette[6]) + 
+  stat_smooth(method = "lm", colour = 'black',fullrange = T) +
+  labs(title = paste("Adj R2 = ", signif(summary(lm3)$adj.r.squared, 5),
+                     "Intercept =", signif(lm3$coef[[1]],5 ),
+                     " Slope =", signif(lm3$coef[[2]], 5),
+                     " P =", signif(summary(lm3)$coef[2,4], 5) )) + scale_fill_manual(values=cbbPalette[6])  +
+  theme_classic2() +   xlab("ICC") + ylab("Cortical thickness")+
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14,face="bold"), legend.position = "none") 
+
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/figure/Regression_cortical_thiccness_vs_ICC.pdf', device = "pdf", width=5, height=5, dpi=800)
+
+
+index= thicc_ids %in% data$SubjID 
+PD_thicc= colMeans(thicc_zcore[,index])
+demo$thiccness=PD_thicc
+
+demo_regress= demo[demo$Group=="Parkinson",]
+
+lm3=lm(thiccness ~ identifiability +1, demo_regress)
+summary(lm3)
+sjPlot::tab_model(lm3)
+
+ggplot(demo_regress, aes(x=identifiability , y = thiccness, fill=cbbPalette[6])) + 
+  geom_jitter(colour = cbbPalette[6]) + 
+  stat_smooth(method = "lm", colour = 'black',fullrange = T) +
+  labs(title = paste("Adj R2 = ", signif(summary(lm3)$adj.r.squared, 5),
+                     "Intercept =", signif(lm3$coef[[1]],5 ),
+                     " Slope =", signif(lm3$coef[[2]], 5),
+                     " P =", signif(summary(lm3)$coef[2,4], 5) )) + scale_fill_manual(values=cbbPalette[6])  +
+  theme_classic2() +   xlab("identifiability") + ylab("Cortical thickness")+
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14,face="bold"), legend.position = "none") 
+
+
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/figure/Regression_cortical_thiccness_vs_self_id.pdf', device = "pdf", width=5, height=5, dpi=800)
+
+
+```
+
+
+
+```{r Plot left superior parietal }
+
+
+data=read.csv('~/Desktop/Alex_fingerprinting/QPN_demo_with_fingerprinting_score_new.csv', stringsAsFactors = FALSE)
+
+data2=read.csv('~/Desktop/Alex_fingerprinting/BD_RPQ_UPDATE_Neuropsy_PD.csv', na.strings = c('NA', "Na", '999'), stringsAsFactors = FALSE)
+
+matched_id= data$SubjID[data$SubjID %in% data2$Patient..]
+
+data$moca2[data$SubjID %in% data2$Patient.. ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% data2$Patient..], matched_id[order(matched_id)], data2$MoCA..Raw.score.[data2$Patient.. %in% data$SubjID])
+data$updrs2[data$SubjID %in% data2$Patient.. ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% data2$Patient..], matched_id[order(matched_id)], data2$UPDRS.Score.part.3[data2$Patient.. %in% data$SubjID])
+
+data$moca2=as.numeric(data$moca2)
+data$updrs2=as.numeric(data$updrs2)
+
+motion = read.csv('~/Desktop/Alex_fingerprinting/QPN_motion_12132021_jason.csv', na.strings = 'NaN', stringsAsFactors = FALSE)
+
+matched_id2= data$SubjID[data$SubjID %in% motion$ID]
+
+
+data$ECG[data$SubjID %in% motion$ID ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% motion$ID], matched_id2[order(matched_id2)], motion$ECG[motion$ID %in% data$SubjID])
+
+data$EOG[data$SubjID %in% motion$ID ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% motion$ID], matched_id2[order(matched_id2)], motion$EOG[motion$ID %in% data$SubjID])
+
+
+data$HLU[data$SubjID %in% motion$ID ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% motion$ID], matched_id2[order(matched_id2)], motion$HLU[motion$ID %in% data$SubjID])
+
+
+data$ECG=as.numeric(data$ECG)
+data$EOG=as.numeric(data$EOG)
+data$HLU=as.numeric(data$HLU)
+
+diseasedur = read.csv('~/Desktop/Alex_fingerprinting/QPN_diseasedurations.csv', na.strings = 'NaN', stringsAsFactors = FALSE)
+colnames(diseasedur)[1]="IDs"
+matched_id2= data$SubjID[data$SubjID %in% diseasedur$IDs]
+
+data$DiseaseDur[data$SubjID %in% diseasedur$IDs ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% diseasedur$IDs], matched_id2[order(matched_id2)], diseasedur$DiseaseDurationSinceDiagnosis[diseasedur$IDs %in% data$SubjID])
+
+data$DiseaseDur=as.numeric(data$DiseaseDur)
+
+
+target= read.csv('~/Desktop/Alex_fingerprinting/NEW_features_4_fingeprinting_target.csv', header = FALSE)
+
+database= read.csv('~/Desktop/Alex_fingerprinting/NEW_features_4_fingeprinting_database.csv', header = FALSE)
+
+target=target[-1,-30670]
+database=database[-1,-30670]
+
+target=target[,-1]
+database=database[,-1]
+
+roi_index= (451*(59-1)+1):(451*(59-1)+451)
+
+target_LSP= target[,roi_index]
+database_LSP= database[,roi_index]
+
+target_LSP= (target_LSP+database_LSP)/2
+
+target_LSP= cbind(data, stack(target_LSP))
+
+target_LSP$ind = plyr::mapvalues(target_LSP$ind , unique(target_LSP$ind ), seq(0,150,1/3))
+
+target_LSP$ind= as.numeric(as.character(target_LSP$ind))
+
+data4plot= target_LSP %>% group_by(Group, ind) %>% summarise( power= mean(log(values)), SEM= (sd(log(values))/sqrt(n())))
+data4plot= data4plot[!is.na(data4plot$Group),]
+
+ggplot(data4plot, aes(x= ind, y = power, fill= Group,colour= Group, ymin=power-SEM, ymax=power+SEM)) + geom_ribbon(alpha=0.5, colour= NA) + geom_line() + theme_classic2() + xlim(1,40) + ylim(-1,3.5)
+
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/figure/Spectrum_left_superior_partietal_group.pdf', device = "pdf", width=10, height=5, dpi=800)
+
+
+target_LSP= target_LSP[!is.na(target_LSP$updrs2),]
+
+data4plot= target_LSP %>% group_by(updrs2_binned, ind) %>% summarise( power= mean(log(values)), SEM= (sd(log(values))/sqrt(n())))
+data4plot= data4plot[!is.na(data4plot$updrs2_binned),]
+
+ggplot(data4plot, aes(x= ind, y = power, fill= updrs2_binned,colour= updrs2_binned, ymin=power-SEM, ymax=power+SEM)) + geom_ribbon(alpha=0.5, colour= NA) + geom_line() + theme_classic2() + xlim(1,40)
+
+
+target_LSP$updrs2_binned=target_LSP$updrs2>median(target_LSP$updrs2)
+
+data4plot= target_LSP %>% group_by(updrs2_binned, ind) %>% summarise( power= mean(log(values)), SEM= (sd(log(values))/sqrt(n())))
+data4plot= data4plot[!is.na(data4plot$updrs2_binned),]
+
+ggplot(data4plot, aes(x= ind, y = power, fill= updrs2_binned,colour= updrs2_binned, ymin=power-SEM, ymax=power+SEM)) + geom_ribbon(alpha=0.5, colour= NA) + geom_line() + theme_classic2() + xlim(1,40) + ylim(-1, 3.5) + scale_color_manual(values=cbbPalette[c(4,6)]) + scale_fill_manual(values=cbbPalette[c(4,6)]) 
+
+
+target_LSP$moca_bin= target_LSP$moca2 <24
+
+data4plot= target_LSP %>% group_by(moca_bin, ind) %>% summarise( power= mean(log(values)), SEM= (sd(log(values))/sqrt(n())))
+data4plot= data4plot[!is.na(data4plot$moca_bin),]
+
+ggplot(data4plot, aes(x= ind, y = power, fill= moca_bin,colour= moca_bin, ymin=power-SEM, ymax=power+SEM)) + geom_ribbon(alpha=0.5, colour= NA) + geom_line() + theme_classic2() + xlim(1,40) + ylim(-1, 3.5) + scale_color_manual(values=cbbPalette[c(4,6)]) + scale_fill_manual(values=cbbPalette[c(4,6)]) 
+
+target_LSP$updrs2_binned=target_LSP$updrs2>median(target_LSP$updrs2)
+target_LSP$moca_bin= target_LSP$moca2 <24
+
+data4plot= target_LSP %>% group_by(updrs2_binned, moca_bin, ind) %>% summarise( power= mean(log(values)), SEM= (sd(log(values))/sqrt(n())))
+data4plot= data4plot[!is.na(data4plot$updrs2_binned),]
+data4plot= data4plot[!is.na(data4plot$moca_bin),]
+
+ggplot(data4plot, aes(x= ind, y = power, fill= updrs2_binned,colour= updrs2_binned, ymin=power-SEM, ymax=power+SEM, linetype= moca_bin)) + geom_ribbon(alpha=0.5, colour= NA) + geom_line() + theme_classic2() + xlim(1,40) + ylim(-1, 3.5) + scale_color_manual(values=cbbPalette[c(4,6)]) + scale_fill_manual(values=cbbPalette[c(4,6)]) 
+
+ggplot(data4plot, aes(x= ind, y = power, fill= moca_bin,colour= moca_bin, ymin=power-SEM, ymax=power+SEM, linetype= updrs2_binned)) + geom_ribbon(alpha=0.5, colour= NA) + geom_line() + theme_classic2() + xlim(1,40) + ylim(-1, 3.5) + scale_color_manual(values=cbbPalette[c(4,6)]) + scale_fill_manual(values=cbbPalette[c(4,6)]) + facet_wrap(~updrs2_binned)
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/figure/Spectrum_left_superior_partietal_MOCA_inter.pdf', device = "pdf", width=10, height=5, dpi=800)
+
+
+ggplot(data4plot, aes(x= ind, y = power, fill= moca_bin,colour= moca_bin, ymin=power-SEM, ymax=power+SEM, linetype= updrs2_binned)) + geom_ribbon(alpha=0.5, colour= NA) + geom_line() + theme_classic2() + xlim(1,40) + ylim(-1, 3.5) + scale_color_manual(values=cbbPalette[c(4,6)]) + scale_fill_manual(values=cbbPalette[c(4,6)]) + facet_wrap(~updrs2_binned) +theme(legend.position = 'none')
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/figure/Spectrum_left_superior_partietal_MOCA_inter_noloegend.pdf', device = "pdf", width=10, height=5, dpi=800)
+
+
+
+
+data$HY_bin = data$Hoehn.and.Yahr.score >=1.5
+roi_index= (451*(50-1)+1):(451*(50-1)+451)
+
+target_LSP= target[,roi_index]
+database_LSP= database[,roi_index]
+
+target_LSP= (target_LSP+database_LSP)/2
+
+target_LSP= cbind(data, stack(target_LSP))
+
+target_LSP$ind = plyr::mapvalues(target_LSP$ind , unique(target_LSP$ind ), seq(0,150,1/3))
+
+target_LSP$ind= as.numeric(as.character(target_LSP$ind))
+
+target_LSP$ind= as.numeric(as.character(target_LSP$ind))
+target_LSP= target_LSP[!is.na(target_LSP$updrs2),]
+target_LSP= target_LSP[!is.na(target_LSP$HY_bin),]
+target_LSP$updrs2_binned=target_LSP$updrs2>median(target_LSP$updrs2)
+
+data4plot= target_LSP %>% group_by(HY_bin, ind) %>% summarise( power= mean(log(values)), SEM= (sd(log(values))/sqrt(n())))
+data4plot= data4plot[!is.na(data4plot$HY_bin),]
+
+ggplot(data4plot, aes(x= ind, y = power, fill= HY_bin,colour= HY_bin, ymin=power-SEM, ymax=power+SEM)) + geom_ribbon(alpha=0.5, colour= NA) + geom_line() + theme_classic2() + xlim(1,40) + ylim(-1,3.5)+ scale_color_manual(values=cbbPalette[c(4,6)]) + scale_fill_manual(values=cbbPalette[c(4,6)])
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/figure/SSpectrum_right_precentral_HY.pdf', device = "pdf", width=10, height=5, dpi=800)
+
+
+```
+
+REM behav disorder does not relate to any of the variables!!!!! which is importnat for using svm or cpm to predict it in the future 
+
+
+```{r Plot corr spectrum }
+
+
+target_corr= read.csv('~/Desktop/Alex_fingerprinting/NEW_corr_periodic_features_target.csv', header = FALSE)
+
+database_corr= read.csv('~/Desktop/Alex_fingerprinting/NEW_corr_periodic_features_database.csv', header = FALSE)
+
+target_corr=target_corr[-1,-7822]
+database_corr=database_corr[-1,-7822]
+
+target_corr=target_corr[,-1]
+database_corr=database_corr[,-1]
+
+roi_index= (115*(59-1)+1):(115*(59-1)+115)
+
+target_LSP= target_corr[,roi_index]
+database_LSP= database_corr[,roi_index]
+
+target_LSP= (target_LSP+database_LSP)/2
+
+#target_LSP= target_LSP+ 2*abs(apply(target_LSP, 1,min))
+
+target_LSP= cbind(data, stack(target_LSP))
+
+target_LSP$ind = plyr::mapvalues(target_LSP$ind , unique(target_LSP$ind ), seq(2,40,1/3))
+
+target_LSP$ind= as.numeric(as.character(target_LSP$ind))
+
+target_LSP= target_LSP[!is.na(target_LSP$updrs2),]
+
+target_LSP$updrs2_binned=target_LSP$updrs2>median(target_LSP$updrs2)
+
+data4plot= target_LSP %>% group_by(updrs2_binned, ind) %>% summarise( power= mean(log(values)), SEM= (sd(log(values))/sqrt(n())))
+data4plot= data4plot[!is.na(data4plot$updrs2_binned),]
+
+ggplot(data4plot, aes(x= ind, y = power, fill= updrs2_binned,colour= updrs2_binned, ymin=power-SEM, ymax=power+SEM)) + geom_ribbon(alpha=0.5, colour= NA) + geom_line() + theme_classic2() + xlim(1,40)  + scale_color_manual(values=cbbPalette[c(4,6)]) + scale_fill_manual(values=cbbPalette[c(4,6)]) 
+
+
+target_LSP$moca_bin= target_LSP$moca2 <24
+
+data4plot= target_LSP %>% group_by(moca_bin, ind) %>% summarise( power= mean(log(values)), SEM= (sd(log(values))/sqrt(n())))
+data4plot= data4plot[!is.na(data4plot$moca_bin),]
+
+ggplot(data4plot, aes(x= ind, y = power, fill= moca_bin,colour= moca_bin, ymin=power-SEM, ymax=power+SEM)) + geom_ribbon(alpha=0.5, colour= NA) + geom_line() + theme_classic2() + xlim(1,40) +  scale_color_manual(values=cbbPalette[c(4,6)]) + scale_fill_manual(values=cbbPalette[c(4,6)]) 
+
+target_LSP$updrs2_binned=target_LSP$updrs2>median(target_LSP$updrs2, na.rm = TRUE)
+target_LSP$moca_bin= target_LSP$moca2 <24
+
+data4plot= target_LSP %>% group_by(updrs2_binned, moca_bin, ind) %>% summarise( power= mean(log(values)), SEM= (sd(log(values))/sqrt(n())))
+data4plot= data4plot[!is.na(data4plot$updrs2_binned),]
+data4plot= data4plot[!is.na(data4plot$moca_bin),]
+
+ggplot(data4plot, aes(x= ind, y = power, fill= updrs2_binned,colour= updrs2_binned, ymin=power-SEM, ymax=power+SEM, linetype= moca_bin)) + geom_ribbon(alpha=0.5, colour= NA) + geom_line() + theme_classic2() + xlim(1,40) + scale_color_manual(values=cbbPalette[c(4,6)]) + scale_fill_manual(values=cbbPalette[c(4,6)]) 
+
+ggplot(data4plot, aes(x= ind, y = power, fill= moca_bin,colour= moca_bin, ymin=power-SEM, ymax=power+SEM, linetype= updrs2_binned)) + geom_ribbon(alpha=0.5, colour= NA) + geom_line() + theme_classic2() + xlim(1,40) + scale_color_manual(values=cbbPalette[c(4,6)]) + scale_fill_manual(values=cbbPalette[c(4,6)]) + facet_wrap(~updrs2_binned)
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/figure/corrSpectrum_left_superior_partietal_MOCA_inter.pdf', device = "pdf", width=10, height=5, dpi=800)
+
+
+ggplot(data4plot, aes(x= ind, y = power, fill= moca_bin,colour= moca_bin, ymin=power-SEM, ymax=power+SEM, linetype= updrs2_binned)) + geom_ribbon(alpha=0.5, colour= NA) + geom_line() + theme_classic2() + xlim(1,40) + scale_color_manual(values=cbbPalette[c(4,6)]) + scale_fill_manual(values=cbbPalette[c(4,6)]) + facet_wrap(~updrs2_binned) +theme(legend.position = 'none')
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/figure/corrSpectrum_left_superior_partietal_MOCA_inter_noloegend.pdf', device = "pdf", width=10, height=5, dpi=800)
+
+
+```
+
+
+
+
+
+```{r Plot aperiodic spectrum }
+
+
+target_ap= read.csv('~/Desktop/Alex_fingerprinting/NEW_aperiodic_features_target.csv', header = FALSE)
+
+database_ap= read.csv('~/Desktop/Alex_fingerprinting/NEW_aperiodic_features_database.csv', header = FALSE)
+
+target_ap=target_ap[-1,-7822]
+database_ap=database_ap[-1,-7822]
+
+target_ap=target_ap[,-1]
+database_ap=database_ap[,-1]
+
+roi_index= (115*(59-1)+1):(115*(59-1)+115)
+
+target_LSP= target_ap[,roi_index]
+database_LSP= database_ap[,roi_index]
+
+target_LSP= (target_LSP+database_LSP)/2
+
+target_LSP= cbind(data, stack(target_LSP))
+
+target_LSP$ind = plyr::mapvalues(target_LSP$ind , unique(target_LSP$ind ), seq(2,40,1/3))
+
+target_LSP$ind= as.numeric(as.character(target_LSP$ind))
+
+target_LSP= target_LSP[!is.na(target_LSP$updrs2),]
+
+target_LSP$updrs2_binned=target_LSP$updrs2>median(target_LSP$updrs2)
+
+data4plot= target_LSP %>% group_by(updrs2_binned, ind) %>% summarise( power= mean(log(values)), SEM= (sd(log(values))/sqrt(n())))
+data4plot= data4plot[!is.na(data4plot$updrs2_binned),]
+
+ggplot(data4plot, aes(x= ind, y = power, fill= updrs2_binned,colour= updrs2_binned, ymin=power-SEM, ymax=power+SEM)) + geom_ribbon(alpha=0.5, colour= NA) + geom_line() + theme_classic2() + xlim(1,40)  + scale_color_manual(values=cbbPalette[c(4,6)]) + scale_fill_manual(values=cbbPalette[c(4,6)]) 
+
+
+target_LSP$moca_bin= target_LSP$moca2 <24
+
+data4plot= target_LSP %>% group_by(moca_bin, ind) %>% summarise( power= mean(log(values)), SEM= (sd(log(values))/sqrt(n())))
+data4plot= data4plot[!is.na(data4plot$moca_bin),]
+
+ggplot(data4plot, aes(x= ind, y = power, fill= moca_bin,colour= moca_bin, ymin=power-SEM, ymax=power+SEM)) + geom_ribbon(alpha=0.5, colour= NA) + geom_line() + theme_classic2() + xlim(1,40) +  scale_color_manual(values=cbbPalette[c(4,6)]) + scale_fill_manual(values=cbbPalette[c(4,6)]) 
+
+target_LSP$updrs2_binned=target_LSP$updrs2>median(target_LSP$updrs2, na.rm = TRUE)
+target_LSP$moca_bin= target_LSP$moca2 <24
+
+data4plot= target_LSP %>% group_by(updrs2_binned, moca_bin, ind) %>% summarise( power= mean(log(values)), SEM= (sd(log(values))/sqrt(n())))
+data4plot= data4plot[!is.na(data4plot$updrs2_binned),]
+data4plot= data4plot[!is.na(data4plot$moca_bin),]
+
+ggplot(data4plot, aes(x= ind, y = power, fill= updrs2_binned,colour= updrs2_binned, ymin=power-SEM, ymax=power+SEM, linetype= moca_bin)) + geom_ribbon(alpha=0.5, colour= NA) + geom_line() + theme_classic2() + xlim(1,40) + scale_color_manual(values=cbbPalette[c(4,6)]) + scale_fill_manual(values=cbbPalette[c(4,6)]) 
+
+ggplot(data4plot, aes(x= ind, y = power, fill= moca_bin,colour= moca_bin, ymin=power-SEM, ymax=power+SEM, linetype= updrs2_binned)) + geom_ribbon(alpha=0.5, colour= NA) + geom_line() + theme_classic2() + xlim(1,40) + scale_color_manual(values=cbbPalette[c(4,6)]) + scale_fill_manual(values=cbbPalette[c(4,6)]) + facet_wrap(~updrs2_binned)
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/figure/aperiodic_Spectrum_left_superior_partietal_MOCA_inter.pdf', device = "pdf", width=10, height=5, dpi=800)
+
+
+ggplot(data4plot, aes(x= ind, y = power, fill= moca_bin,colour= moca_bin, ymin=power-SEM, ymax=power+SEM, linetype= updrs2_binned)) + geom_ribbon(alpha=0.5, colour= NA) + geom_line() + theme_classic2() + xlim(1,40) + scale_color_manual(values=cbbPalette[c(4,6)]) + scale_fill_manual(values=cbbPalette[c(4,6)]) + facet_wrap(~updrs2_binned) +theme(legend.position = 'none')
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/figure/aperiodic_Spectrum_left_superior_partietal_MOCA_inter_noloegend.pdf', device = "pdf", width=10, height=5, dpi=800)
+
+
+
+target= read.csv('~/Desktop/Alex_fingerprinting/NEW_features_4_fingeprinting_target.csv', header = FALSE)
+
+database= read.csv('~/Desktop/Alex_fingerprinting/NEW_features_4_fingeprinting_database.csv', header = FALSE)
+
+target=target[-1,-30670]
+database=database[-1,-30670]
+
+target=target[,-1]
+database=database[,-1]
+
+roi_index= (451*(59-1)+7):(451*(59-1)+121)
+
+target_LSP2= target[,roi_index]
+database_LSP2= database[,roi_index]
+
+target_LSP2= (target_LSP2+database_LSP2)/2
+
+target_LSP2= cbind(data, stack(target_LSP2))
+
+target_LSP2$ind = plyr::mapvalues(target_LSP2$ind , unique(target_LSP2$ind ), seq(2,40,1/3))
+
+target_LSP2$ind= as.numeric(as.character(target_LSP2$ind))
+
+target_LSP2= target_LSP2[!is.na(target_LSP2$updrs2),]
+
+target_LSP2$updrs2_binned=target_LSP2$updrs2>median(target_LSP2$updrs2)
+
+data_all=rbind(target_LSP2, target_LSP[,1:35])
+data_all$spectrafeat= rep(c('spectra','aperiodic'), each=7015)
+data_all$spectrafeat= factor(data_all$spectrafeat, levels= c('spectra', 'aperiodic'))
+
+data4plot= data_all %>% group_by(spectrafeat, updrs2_binned, ind) %>% summarise( power= mean(log(values)), SEM= (sd(log(values))/sqrt(n())))
+data4plot= data4plot[!is.na(data4plot$updrs2_binned),]
+
+
+ggplot(data4plot, aes(x= ind, y = power, fill= spectrafeat,colour= spectrafeat, ymin=power-SEM, ymax=power+SEM)) + geom_ribbon(alpha=0.5, colour= NA) + geom_line() + theme_classic2() + xlim(1,40) + ylim(-1, 3.5) + scale_color_manual(values=cbbPalette[c(4,6)]) + scale_fill_manual(values=cbbPalette[c(4,6)]) + facet_wrap(~updrs2_binned)
+
+
+data_all$updrs2_binned=data_all$updrs2>median(data_all$updrs2)
+data_all$moca_bin= data_all$moca2 <24
+
+data4plot= data_all %>% group_by(spectrafeat, updrs2_binned, moca_bin, ind) %>% summarise( power= mean(log(values)), SEM= (sd(log(values))/sqrt(n())))
+data4plot= data4plot[!is.na(data4plot$updrs2_binned),]
+data4plot= data4plot[!is.na(data4plot$moca_bin),]
+
+ggplot(data4plot, aes(x= ind, y = power, fill= moca_bin,colour= moca_bin, ymin=power-SEM, ymax=power+SEM, linetype= spectrafeat)) + geom_ribbon(alpha=0.5, colour= NA) + geom_line() + theme_classic2() + xlim(2,40) + ylim(-1.2, 3.5) + scale_color_manual(values=cbbPalette[c(4,6)]) + scale_fill_manual(values=cbbPalette[c(4,6)]) + facet_wrap(~updrs2_binned)
+
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/figure/aperiodic&Spectrum_left_superior_partietal_MOCA_inter.pdf', device = "pdf", width=10, height=5, dpi=800)
+
+
+ggplot(data4plot, aes(x= ind, y = power, fill= moca_bin,colour= moca_bin, ymin=power-SEM, ymax=power+SEM, linetype= spectrafeat)) + geom_ribbon(alpha=0.5, colour= NA) + geom_line() + theme_classic2() + xlim(2,40) + ylim(-1.2, 3.5) + scale_color_manual(values=cbbPalette[c(4,6)]) + scale_fill_manual(values=cbbPalette[c(4,6)]) + facet_wrap(~updrs2_binned) +theme(legend.position = 'none')
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/figure/aperiodic&Spectrum_left_superior_partietal_MOCA_inter_noloegend.pdf', device = "pdf", width=10, height=5, dpi=800)
+
+
+diff=target_LSP2
+diff$values= target_LSP2$values-target_LSP$values
+
+target_LSP2$values=log(target_LSP2$values)
+target_LSP$values=log(target_LSP$values)
+
+data_all=target_LSP2
+data_all$values= target_LSP2$values - target_LSP$values 
+
+data4plot= data_all %>% group_by(updrs2_binned, ind) %>% summarise( power= mean(values), SEM= (sd(values)/sqrt(n())))
+data4plot= data4plot[!is.na(data4plot$updrs2_binned),]
+
+
+ggplot(data4plot, aes(x= ind, y = power, fill= updrs2_binned,colour= updrs2_binned, ymin=power-SEM, ymax=power+SEM)) + geom_ribbon(alpha=0.5, colour= NA) + geom_line() + theme_classic2() + xlim(1,40) + ylim(-0.5, 3.5) + scale_color_manual(values=cbbPalette[c(4,6)]) + scale_fill_manual(values=cbbPalette[c(4,6)]) 
+
+
+data_all$updrs2_binned=data_all$updrs2>median(data_all$updrs2)
+data_all$moca_bin= data_all$moca2 <24
+
+data4plot= data_all %>% group_by(updrs2_binned, moca_bin, ind) %>% summarise( power= mean(values), SEM= (sd(values)/sqrt(n())))
+data4plot= data4plot[!is.na(data4plot$updrs2_binned),]
+data4plot= data4plot[!is.na(data4plot$moca_bin),]
+
+ggplot(data4plot, aes(x= ind, y = power, fill= moca_bin,colour= moca_bin, ymin=power-SEM, ymax=power+SEM, linetype= updrs2_binned)) + geom_ribbon(alpha=0.5, colour= NA) + geom_line() + theme_classic2() + xlim(2,40) + ylim(-0.5, 3.5) + scale_color_manual(values=cbbPalette[c(4,6)]) + scale_fill_manual(values=cbbPalette[c(4,6)]) + facet_wrap(~updrs2_binned)
+
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/figure/corrSpectrum_left_superior_partietal_MOCA_inter.pdf', device = "pdf", width=10, height=5, dpi=800)
+
+
+ggplot(data4plot, aes(x= ind, y = power, fill= moca_bin,colour= moca_bin, ymin=power-SEM, ymax=power+SEM, linetype= updrs2_binned)) + geom_ribbon(alpha=0.5, colour= NA) + geom_line() + theme_classic2() + xlim(2,40) + ylim(-0.5, 3.5) + scale_color_manual(values=cbbPalette[c(4,6)]) + scale_fill_manual(values=cbbPalette[c(4,6)]) + facet_wrap(~updrs2_binned) +theme(legend.position = 'none')
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/figure/corrSpectrum_left_superior_partietal_MOCA_inter_noloegend.pdf', device = "pdf", width=10, height=5, dpi=800)
+
+
+
+```
+
+
+```{r SVM to predict HY }
+
+
+data=read.csv('~/Desktop/Alex_fingerprinting/QPN_demo_with_fingerprinting_score_new.csv', stringsAsFactors = FALSE)
+
+data2=read.csv('~/Desktop/Alex_fingerprinting/BD_RPQ_UPDATE_Neuropsy_PD.csv', na.strings = c('NA', "Na", '999'), stringsAsFactors = FALSE)
+
+matched_id= data$SubjID[data$SubjID %in% data2$Patient..]
+
+data$moca2[data$SubjID %in% data2$Patient.. ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% data2$Patient..], matched_id[order(matched_id)], data2$MoCA..Raw.score.[data2$Patient.. %in% data$SubjID])
+data$updrs2[data$SubjID %in% data2$Patient.. ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% data2$Patient..], matched_id[order(matched_id)], data2$UPDRS.Score.part.3[data2$Patient.. %in% data$SubjID])
+
+
+data$Hoehn.and.Yahr.score2[data$SubjID %in% data2$Patient.. ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% data2$Patient..], matched_id[order(matched_id)], data2$Hoehn.and.Yahr.score[data2$Patient.. %in% data$SubjID])
+
+data$moca2=as.numeric(data$moca2)
+data$updrs2=as.numeric(data$updrs2)
+
+motion = read.csv('~/Desktop/Alex_fingerprinting/QPN_motion_12132021_jason.csv', na.strings = 'NaN', stringsAsFactors = FALSE)
+
+matched_id2= data$SubjID[data$SubjID %in% motion$ID]
+
+
+data$ECG[data$SubjID %in% motion$ID ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% motion$ID], matched_id2[order(matched_id2)], motion$ECG[motion$ID %in% data$SubjID])
+
+data$EOG[data$SubjID %in% motion$ID ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% motion$ID], matched_id2[order(matched_id2)], motion$EOG[motion$ID %in% data$SubjID])
+
+
+data$HLU[data$SubjID %in% motion$ID ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% motion$ID], matched_id2[order(matched_id2)], motion$HLU[motion$ID %in% data$SubjID])
+
+
+data$ECG=as.numeric(data$ECG)
+data$EOG=as.numeric(data$EOG)
+data$HLU=as.numeric(data$HLU)
+
+diseasedur = read.csv('~/Desktop/Alex_fingerprinting/QPN_diseasedurations.csv', na.strings = 'NaN', stringsAsFactors = FALSE)
+colnames(diseasedur)[1]="IDs"
+matched_id2= data$SubjID[data$SubjID %in% diseasedur$IDs]
+
+data$DiseaseDur[data$SubjID %in% diseasedur$IDs ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% diseasedur$IDs], matched_id2[order(matched_id2)], diseasedur$DiseaseDurationSinceDiagnosis[diseasedur$IDs %in% data$SubjID])
+
+data$DiseaseDur=as.numeric(data$DiseaseDur)
+
+rembd= read.csv('~/Desktop/Alex_fingerprinting/QPN_CBIGData_forJason_01242022.csv', stringsAsFactors = FALSE, na.strings = c('NaN', 'N/D'))
+
+matched_id= data$SubjID[data$SubjID %in% rembd$participant]
+
+data$REM[data$SubjID %in% rembd$participant ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% rembd$participant], matched_id[order(matched_id)], rembd$RBD[rembd$participant %in% data$SubjID])
+
+data$Asymetry[data$SubjID %in% rembd$participant ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% rembd$participant], matched_id[order(matched_id)], rembd$Asymetrie[rembd$participant %in% data$SubjID])
+
+
+PD_validation_R2 = read.csv('~/Desktop/Alex_fingerprinting/PD_validation_R2.csv', na.strings = 'NaN', stringsAsFactors = FALSE, header = FALSE)
+
+PD_training_R2 = read.csv('~/Desktop/Alex_fingerprinting/PD_training_R2.csv', na.strings = 'NaN', stringsAsFactors = FALSE, header = FALSE)
+
+
+HC_validation_R2 = read.csv('~/Desktop/Alex_fingerprinting/HC_validation_R2.csv', na.strings = 'NaN', stringsAsFactors = FALSE, header = FALSE)
+
+HC_training_R2 = read.csv('~/Desktop/Alex_fingerprinting/HC_training_R2.csv', na.strings = 'NaN', stringsAsFactors = FALSE, header = FALSE)
+
+HC_R2= rowMeans(data.frame(colMeans(HC_training_R2), colMeans(HC_validation_R2)))
+
+PD_R2= rowMeans(data.frame(colMeans(PD_training_R2), colMeans(PD_validation_R2)))
+
+data$FOOOF_fit = c(HC_R2, PD_R2)
+
+data$FOOOF_fit= as.numeric(data$FOOOF_fit)
+
+# deocde H&Y per Yeo network (see definition below)
+dmn=c(0,4,14,15,20,21,30,31,34,38,39,40,50,51,52,53,56,57)+1
+da=c(58, 59)+1
+fp= c(5,54, 55)+1
+limbic= c(8,9,10,11,16,17,24,25,28,29,64,65)+1
+som=c(1,32,33,44,45,48,49,60,61,66,67)+1
+va=c(2,3,18,19,36,37,41,46,47,62,63)+1
+vis=c(6,7,12,13,22,23,26,27,35,42,43)+1
+
+list= list(dmn,da,fp,limbic,som,va,vis)
+
+
+for (j in 1:7){ 
+
+roi_index= c(mapply(seq, 451*(list[[j]]-1)+1, (451*(list[[j]]-1)+451)))
+target_LSP= target[,roi_index]
+database_LSP= database[,roi_index]
+target_LSP= (target_LSP+database_LSP)/2
+target_LSP=log(target_LSP)
+
+# use 80/20 %
+target_LSP=target_LSP[!is.na(data$Hoehn.and.Yahr.score),]
+data2=data[!is.na(data$Hoehn.and.Yahr.score),]
+data2$HoehnYarr_bin= data2$Hoehn.and.Yahr.score >1.5
+data2$HoehnYarr_bin = as.factor(data2$HoehnYarr_bin)
+data_HYpos= target_LSP[data2$Hoehn.and.Yahr.score >1.5,]
+data_HYneg= target_LSP[data2$Hoehn.and.Yahr.score <=1.5,]
+prediction=c()
+
+for (i in 1:1000){ 
+datatrain= rbind(data_HYpos[sample(nrow(data_HYpos),10),], data_HYneg[sample(nrow(data_HYneg),10),])
+datatrain$HoehnYarr_bin= c(rep(1 ,10), rep(0,10))
+datatrain$HoehnYarr_bin= as.factor(datatrain$HoehnYarr_bin)
+datatest= rbind(data_HYpos[sample(nrow(data_HYpos),3),], data_HYneg[sample(nrow(data_HYneg),3),]) 
+datatest$HoehnYarr_bin= c(rep(1,3), rep(0,3))
+datatest$HoehnYarr_bin= as.factor(datatest$HoehnYarr_bin)
+
+svm_model=e1071::svm(HoehnYarr_bin ~., data= datatrain, kernel = "linear", cost = 1)
+
+pred <- predict(svm_model,datatest)
+prediction[i]=sum(pred==datatest$HoehnYarr_bin)/6
+}
+
+mean(prediction)+1.96*(sd(prediction)/sqrt(1000))
+mean(prediction)-1.96*(sd(prediction)/sqrt(1000))
+predictions= cbind(predictions,prediction)
+
+t.test(prediction, alternative ='greater', mu=0.5)
+
+
+}
+
+
+
+write.csv(predictions, '~/Desktop/Alex_fingerprinting/Results_decoding_SVM_HY.csv')
+
+
+
+# decode H&Y by ROI
+target= read.csv('~/Desktop/Alex_fingerprinting/NEW_features_4_fingeprinting_target.csv', header = FALSE)
+
+database= read.csv('~/Desktop/Alex_fingerprinting/NEW_features_4_fingeprinting_database.csv', header = FALSE)
+
+target=target[-1,-30670]
+database=database[-1,-30670]
+
+target=target[,-1]
+database=database[,-1]
+
+predictions= c()
+
+for (j in 1:68){
+  
+roi_index= (451*(j-1)+1):(451*(j-1)+451)
+
+target_LSP= target[,roi_index]
+database_LSP= database[,roi_index]
+target_LSP= (target_LSP+database_LSP)/2
+target_LSP=log(target_LSP)
+
+# We used various cross validation strategies
+# 80-20 (10 to train 3 to test)
+# 70-30 (9 to train and 4 to test)
+# 90-10 (12 to train and 1 to test)
+target_LSP=target_LSP[!is.na(data$Hoehn.and.Yahr.score),]
+data2=data[!is.na(data$Hoehn.and.Yahr.score),]
+data2$HoehnYarr_bin= data2$Hoehn.and.Yahr.score >1.5
+data2$HoehnYarr_bin = as.factor(data2$HoehnYarr_bin)
+data_HYpos= target_LSP[data2$Hoehn.and.Yahr.score >1.5,]
+data_HYneg= target_LSP[data2$Hoehn.and.Yahr.score <=1.5,]
+prediction=c()
+
+  for (i in 1:1000){ 
+      datatrain= rbind(data_HYpos[sample(nrow(data_HYpos),12),], data_HYneg[sample(nrow(data_HYneg),12),])
+      datatrain$HoehnYarr_bin= c(rep(1 ,12), rep(0,12))
+      datatrain$HoehnYarr_bin= as.factor(datatrain$HoehnYarr_bin)
+      datatest= rbind(data_HYpos[sample(nrow(data_HYpos),1),], data_HYneg[sample(nrow(data_HYneg),1),]) 
+      datatest$HoehnYarr_bin= c(rep(1,1), rep(0,1))
+      datatest$HoehnYarr_bin= as.factor(datatest$HoehnYarr_bin)
+      
+      svm_model=e1071::svm(HoehnYarr_bin ~., data= datatrain, kernel = "linear", cost = 1)
+      
+      pred <- predict(svm_model,datatest)
+      prediction[i]=sum(pred==datatest$HoehnYarr_bin)/8
+  }
+t.test(prediction, alternative ='greater', mu=0.5)
+mean(prediction)+1.96*(sd(prediction)/sqrt(1000))
+mean(prediction)-1.96*(sd(prediction)/sqrt(1000))
+predictions= cbind(predictions,prediction)
+print(j)
+}
+
+predictions= as.data.frame(predictions)
+
+write.csv(predictions, '~/Desktop/Alex_fingerprinting/Results_from_SVM_class_of_HY_allROI2_90-10_split.csv')
+
+
+```
+
+
+
+```{r PLOT decoding analysis}
+
+SVM=read.csv( '~/Desktop/Alex_fingerprinting/Results_decoding_SVM_HY.csv')
+SVM=SVM[,-1]
+
+output=apply(SVM,2, t.test, mu = 0.5, alternative = 'greater') 
+
+cohens_d=(colMeans(SVM)-0.5)/ apply(SVM,2, sd)
+
+ROI= c('Left Superior Parietal', 'DMN', 'DA', 'FP', 'Limbic', 'SM', 'VA', 'Vis')
+SVM=stack(SVM)
+SVM$ROI=rep(ROI,each=1000)
+SVM$ROI= factor(SVM$ROI, levels = c('Left Superior Parietal', 'DMN', 'DA', 'FP', 'Limbic', 'SM', 'VA', 'Vis'))
+
+SVM1= SVM[! SVM$ROI %in% c('Left Superior Parietal'), ]
+
+SVM2= SVM1 %>% group_by(ROI) %>% summarise(m= mean(values), CI= 1.96*(sd(values))/sqrt(n()))
+
+ggplot(SVM2, aes(x=ROI , y = m, fill=cbbPalette[5], colour=cbbPalette[5])) + 
+  geom_point(position=position_dodge(.9), size=4)+ geom_errorbar(aes(ymin=m-CI, ymax=m+CI), width=.2,
+                 position=position_dodge(.9))  + scale_fill_manual(values=cbbPalette[5])  + scale_color_manual(values=cbbPalette[5]) + theme_classic2() + xlab("") + ylab("Mean decoding accuracy (%)")+
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14,face="bold"), legend.position = "none") 
+
+ggplot(SVM2, aes(x=ROI , y = m, fill=cbbPalette[5], colour=cbbPalette[5])) + coord_cartesian(ylim=c(0.5,0.85))+
+  geom_bar(stat='identity',position=position_dodge(.9)) + geom_errorbar(colour="#000000", aes(ymin=m-CI, ymax=m+CI),  width=.2, position=position_dodge(.9))  + scale_fill_manual(values=cbbPalette[5])  + scale_color_manual(values=cbbPalette[5]) + theme_classic2() + xlab("") + ylab("Mean decoding accuracy (%)")+
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14,face="bold"), legend.position = "none") +geom_hline(yintercept=0.5, linetype="dashed", color = "grey", size=1)
+
+ggplot(SVM2, aes(x=ROI , y = m, fill=cbbPalette[5], colour=cbbPalette[5])) + coord_flip(ylim=c(0.5,0.85))+
+  geom_bar(stat='identity',position=position_dodge(.9)) + geom_errorbar(colour="#000000", aes(ymin=m-CI, ymax=m+CI),  width=.2, position=position_dodge(.9))  + scale_fill_manual(values=cbbPalette[5])  + scale_color_manual(values=cbbPalette[5]) + theme_classic2() + xlab("") + ylab("Mean decoding accuracy (%)")+
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14,face="bold"), legend.position = "none") +geom_hline(yintercept=0.5, linetype="dashed", color = "grey", size=1)
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/figure/SVM_HY_decoding_acc_netowrk.pdf', device = "pdf", height = 6, width = 5)
+
+
+```
+
+
+
+
+
+
+``` {r plot SVM topo}
+
+
+SVM=read.csv( '~/Desktop/Alex_fingerprinting/Results_from_SVM_class_of_HY_allROI.csv')
+SVM=SVM[,-1]
+
+df=read.csv('~/Desktop/Alex_fingerprinting/PSD_ICC_orig_PD_new_PKD2.csv', header = FALSE, stringsAsFactors = FALSE)
+colnames(df)[1]='region'
+df=df[,1:2]
+df$hemi =''
+df$hemi[seq(2,68,2)] ='right'
+df$hemi[seq(1,67,2)] ='left'
+df$ACC=colMeans(SVM)
+
+
+someData2= df
+colnames(someData2)[2]='Fingerprinting accuracy'
+colnames(someData2)[1]='region'
+colnames(someData2)[3]='hemi'
+
+ggplot(someData2) +
+  geom_brain(atlas = dk, 
+             position = position_brain(hemi ~ side),
+             aes(fill = `ACC`)) +
+  #scale_fill_distiller(palette = "RdBu"
+  #                     , limits = c(0.4, 0.9))+
+  viridis::scale_fill_viridis(option = 'magma')+
+  #scale_fill_gradient2(low="white", mid="#EC352F", high="#6C1917", 
+  #                     midpoint=0.6,   
+  #                     limits=c(0.4, 0.9 ))+
+  theme_void() 
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/ICC_output/decode_HY_ROI.pdf', device = "pdf")
+
+
+
+
+#### diff in ICC
+SVM=read.csv( '~/Desktop/Alex_fingerprinting/Results_from_SVM_class_of_HY_allROI.csv')
+SVM=SVM[,-1]
+
+df=read.csv('~/Desktop/Alex_fingerprinting/PSD_ICC_orig_PD_new_CTL2.csv', header = FALSE, stringsAsFactors = FALSE)
+df2=read.csv('~/Desktop/Alex_fingerprinting/PSD_ICC_orig_PD_new_PKD2.csv', header = FALSE, stringsAsFactors = FALSE)
+df[,2:452]=df2[,2:452]-df[,2:452]
+colnames(df)[1]='region'
+df$hemi =''
+df$hemi[seq(2,68,2)] ='right'
+df$hemi[seq(1,67,2)] ='left'
+
+cor.test(colMeans(SVM), rowMeans(df[,2:452]) )
+
+coeff= data.frame()
+data4reg=data.frame(SVM= colMeans(SVM), ICC=rowMeans(df[,2:452]))
+data4reg= as.data.frame(scale(data4reg))
+lm3=lm(SVM ~ ICC, data4reg)
+summary(lm3)
+coeff=rbind(coeff, data.frame(coef=coef(lm3)[2], CI_low=confint(lm3)[2,1],CI_up=confint(lm3)[2,2] ))
+
+ggplot(data4reg, aes(x=SVM , y = ICC, fill=cbbPalette[3])) + 
+  geom_jitter(colour = cbbPalette[6]) + 
+  stat_smooth(method = "lm", colour = 'black',fullrange = T, fill=cbbPalette[3]) +
+  labs(title = paste("Adj R2 = ", signif(summary(lm3)$adj.r.squared, 5),
+                     "Intercept =", signif(lm3$coef[[1]],5 ),
+                     " Slope =", signif(lm3$coef[[2]], 5),
+                     " P =", signif(summary(lm3)$coef[2,4], 5) )) + scale_fill_manual(values=cbbPalette[3])  + theme_classic2() +   xlab("decoding accuracy (%)") + ylab("ICC")+
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14,face="bold"), legend.position = "none") 
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/figure/Regression_SVM_ICC_broadband.pdf', device = "pdf", width=5, height=5, dpi=800)
+
+
+cor.test(colMeans(SVM), rowMeans(df[,152:452]) )
+data4reg=data.frame(SVM= colMeans(SVM), ICC=rowMeans(df[,152:452]))
+data4reg= as.data.frame(scale(data4reg))
+lm3=lm(SVM ~ ICC, data4reg)
+summary(lm3)
+coeff=rbind(coeff, data.frame(coef=coef(lm3)[2], CI_low=confint(lm3)[2,1],CI_up=confint(lm3)[2,2] ))
+
+ggplot(data4reg, aes(x=SVM , y = ICC, fill=cbbPalette[3])) + 
+  geom_jitter(colour = cbbPalette[6]) + 
+  stat_smooth(method = "lm", colour = 'black',fullrange = T, fill=cbbPalette[3]) +
+  labs(title = paste("Adj R2 = ", signif(summary(lm3)$adj.r.squared, 5),
+                     "Intercept =", signif(lm3$coef[[1]],5 ),
+                     " Slope =", signif(lm3$coef[[2]], 5),
+                     " P =", signif(summary(lm3)$coef[2,4], 5) )) + scale_fill_manual(values=cbbPalette[3])  + theme_classic2() +   xlab("decoding accuracy (%)") + ylab("ICC")+
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14,face="bold"), legend.position = "none") 
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/figure/Regression_SVM_ICC_Hgamma.pdf', device = "pdf", width=5, height=5, dpi=800)
+
+cor.test(colMeans(SVM), rowMeans(df[,92:151]) )
+data4reg=data.frame(SVM= colMeans(SVM), ICC=rowMeans(df[,92:151]))
+data4reg= as.data.frame(scale(data4reg))
+lm3=lm(SVM ~ ICC, data4reg)
+summary(lm3)
+coeff=rbind(coeff, data.frame(coef=coef(lm3)[2], CI_low=confint(lm3)[2,1],CI_up=confint(lm3)[2,2] ))
+
+ggplot(data4reg, aes(x=SVM , y = ICC, fill=cbbPalette[3])) + 
+  geom_jitter(colour = cbbPalette[6]) + 
+  stat_smooth(method = "lm", colour = 'black',fullrange = T, fill=cbbPalette[3]) +
+  labs(title = paste("Adj R2 = ", signif(summary(lm3)$adj.r.squared, 5),
+                     "Intercept =", signif(lm3$coef[[1]],5 ),
+                     " Slope =", signif(lm3$coef[[2]], 5),
+                     " P =", signif(summary(lm3)$coef[2,4], 5) )) + scale_fill_manual(values=cbbPalette[3])  + theme_classic2() +   xlab("decoding accuracy (%)") + ylab("ICC")+
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14,face="bold"), legend.position = "none") 
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/figure/Regression_SVM_ICC_gamma.pdf', device = "pdf", width=5, height=5, dpi=800)
+
+cor.test(colMeans(SVM), rowMeans(df[,41:91]) )
+data4reg=data.frame(SVM= colMeans(SVM), ICC=rowMeans(df[,41:91]))
+data4reg= as.data.frame(scale(data4reg))
+lm3=lm(SVM ~ ICC, data4reg)
+summary(lm3)
+coeff=rbind(coeff, data.frame(coef=coef(lm3)[2], CI_low=confint(lm3)[2,1],CI_up=confint(lm3)[2,2] ))
+
+ggplot(data4reg, aes(x=SVM , y = ICC, fill=cbbPalette[3])) + 
+  geom_jitter(colour = cbbPalette[6]) + 
+  stat_smooth(method = "lm", colour = 'black',fullrange = T, fill=cbbPalette[3]) +
+  labs(title = paste("Adj R2 = ", signif(summary(lm3)$adj.r.squared, 5),
+                     "Intercept =", signif(lm3$coef[[1]],5 ),
+                     " Slope =", signif(lm3$coef[[2]], 5),
+                     " P =", signif(summary(lm3)$coef[2,4], 5) )) + scale_fill_manual(values=cbbPalette[3])  + theme_classic2() +   xlab("decoding accuracy (%)") + ylab("ICC")+
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14,face="bold"), legend.position = "none") 
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/figure/Regression_SVM_ICC_beta.pdf', device = "pdf", width=5, height=5, dpi=800)
+
+cor.test(colMeans(SVM), rowMeans(df[,26:40]) )
+data4reg=data.frame(SVM= colMeans(SVM), ICC=rowMeans(df[,26:40]))
+data4reg= as.data.frame(scale(data4reg))
+lm3=lm(SVM ~ ICC, data4reg)
+summary(lm3)
+coeff=rbind(coeff, data.frame(coef=coef(lm3)[2], CI_low=confint(lm3)[2,1],CI_up=confint(lm3)[2,2] ))
+
+ggplot(data4reg, aes(x=SVM , y = ICC, fill=cbbPalette[3])) + 
+  geom_jitter(colour = cbbPalette[6]) + 
+  stat_smooth(method = "lm", colour = 'black',fullrange = T, fill=cbbPalette[3]) +
+  labs(title = paste("Adj R2 = ", signif(summary(lm3)$adj.r.squared, 5),
+                     "Intercept =", signif(lm3$coef[[1]],5 ),
+                     " Slope =", signif(lm3$coef[[2]], 5),
+                     " P =", signif(summary(lm3)$coef[2,4], 5) )) + scale_fill_manual(values=cbbPalette[3])  + theme_classic2() +   xlab("decoding accuracy (%)") + ylab("ICC")+
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14,face="bold"), legend.position = "none") 
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/figure/Regression_SVM_ICC_alpha.pdf', device = "pdf", width=5, height=5, dpi=800)
+
+cor.test(colMeans(SVM), rowMeans(df[,14:26]) )
+data4reg=data.frame(SVM= colMeans(SVM), ICC=rowMeans(df[,14:26]))
+data4reg= as.data.frame(scale(data4reg))
+lm3=lm(SVM ~ ICC, data4reg)
+summary(lm3)
+coeff=rbind(coeff, data.frame(coef=coef(lm3)[2], CI_low=confint(lm3)[2,1],CI_up=confint(lm3)[2,2] ))
+
+ggplot(data4reg, aes(x=SVM , y = ICC, fill=cbbPalette[3])) + 
+  geom_jitter(colour = cbbPalette[6]) + 
+  stat_smooth(method = "lm", colour = 'black',fullrange = T, fill=cbbPalette[3]) +
+  labs(title = paste("Adj R2 = ", signif(summary(lm3)$adj.r.squared, 5),
+                     "Intercept =", signif(lm3$coef[[1]],5 ),
+                     " Slope =", signif(lm3$coef[[2]], 5),
+                     " P =", signif(summary(lm3)$coef[2,4], 5) )) + scale_fill_manual(values=cbbPalette[3])  + theme_classic2() +   xlab("decoding accuracy (%)") + ylab("ICC")+
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14,face="bold"), legend.position = "none") 
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/figure/Regression_SVM_ICC_theta.pdf', device = "pdf", width=5, height=5, dpi=800)
+
+cor.test(colMeans(SVM), rowMeans(df[,2:13]) )
+data4reg=data.frame(SVM= colMeans(SVM), ICC=rowMeans(df[,2:13]))
+data4reg= as.data.frame(scale(data4reg))
+lm3=lm(SVM ~ ICC, data4reg)
+summary(lm3)
+coeff=rbind(coeff, data.frame(coef=coef(lm3)[2], CI_low=confint(lm3)[2,1],CI_up=confint(lm3)[2,2] ))
+
+ggplot(data4reg, aes(x=SVM , y = ICC, fill=cbbPalette[3])) + 
+  geom_jitter(colour = cbbPalette[6]) + 
+  stat_smooth(method = "lm", colour = 'black',fullrange = T, fill=cbbPalette[3]) +
+  labs(title = paste("Adj R2 = ", signif(summary(lm3)$adj.r.squared, 5),
+                     "Intercept =", signif(lm3$coef[[1]],5 ),
+                     " Slope =", signif(lm3$coef[[2]], 5),
+                     " P =", signif(summary(lm3)$coef[2,4], 5) )) + scale_fill_manual(values=cbbPalette[3])  + theme_classic2() +   xlab("decoding accuracy (%)") + ylab("ICC")+
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14,face="bold"), legend.position = "none") 
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/figure/Regression_SVM_ICC_delta.pdf', device = "pdf", width=5, height=5, dpi=800)
+
+coeff$band= c('broadband', 'high gamma', 'gamma', 'beta', 'alpha', 'theta', 'delta')
+coeff$band = factor(coeff$band, levels = c('high gamma', 'gamma', 'beta', 'alpha', 'theta', 'delta','broadband'))
+
+ggplot(coeff, aes(x=band , y = coef, colour= cbbPalette[3], fill= cbbPalette[3])) + coord_flip(ylim=c(-0.2,0.7)) + geom_hline(yintercept = 0, linetype="dashed", color = "grey", size=1) +
+  geom_errorbar(colour="#000000", aes(ymin=CI_low, ymax=CI_up),  width=.2, position=position_dodge(.9)) + geom_point(stat='identity',position=position_dodge(.9), size= 10)   + scale_fill_manual(values=cbbPalette[3])  + scale_color_manual(values=cbbPalette[3]) + theme_classic2() + xlab("") + ylab(" correlation (r)")+
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14,face="bold"), legend.position = "none")  
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/figure/SVM_HY_corr_plot.pdf', device = "pdf", height = 3.5, width = 5)
+
+
+```
+
+
+
+```{r hist of self and other corrs }
+
+
+data=read.csv('~/Desktop/Alex_fingerprinting/QPN_demo_with_fingerprinting_score_new.csv', stringsAsFactors = FALSE)
+
+data2=read.csv('~/Desktop/Alex_fingerprinting/BD_RPQ_UPDATE_Neuropsy_PD.csv', na.strings = c('NA', "Na", '999'), stringsAsFactors = FALSE)
+
+matched_id= data$SubjID[data$SubjID %in% data2$Patient..]
+
+data$moca2[data$SubjID %in% data2$Patient.. ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% data2$Patient..], matched_id[order(matched_id)], data2$MoCA..Raw.score.[data2$Patient.. %in% data$SubjID])
+data$updrs2[data$SubjID %in% data2$Patient.. ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% data2$Patient..], matched_id[order(matched_id)], data2$UPDRS.Score.part.3[data2$Patient.. %in% data$SubjID])
+
+data$moca2=as.numeric(data$moca2)
+data$updrs2=as.numeric(data$updrs2)
+
+motion = read.csv('~/Desktop/Alex_fingerprinting/QPN_motion_12132021_jason.csv', na.strings = 'NaN', stringsAsFactors = FALSE)
+
+matched_id2= data$SubjID[data$SubjID %in% motion$ID]
+
+
+data$ECG[data$SubjID %in% motion$ID ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% motion$ID], matched_id2[order(matched_id2)], motion$ECG[motion$ID %in% data$SubjID])
+
+data$EOG[data$SubjID %in% motion$ID ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% motion$ID], matched_id2[order(matched_id2)], motion$EOG[motion$ID %in% data$SubjID])
+
+
+data$HLU[data$SubjID %in% motion$ID ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% motion$ID], matched_id2[order(matched_id2)], motion$HLU[motion$ID %in% data$SubjID])
+
+
+data$ECG=as.numeric(data$ECG)
+data$EOG=as.numeric(data$EOG)
+data$HLU=as.numeric(data$HLU)
+
+diseasedur = read.csv('~/Desktop/Alex_fingerprinting/QPN_diseasedurations.csv', na.strings = 'NaN', stringsAsFactors = FALSE)
+colnames(diseasedur)[1]="IDs"
+matched_id2= data$SubjID[data$SubjID %in% diseasedur$IDs]
+
+data$DiseaseDur[data$SubjID %in% diseasedur$IDs ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% diseasedur$IDs], matched_id2[order(matched_id2)], diseasedur$DiseaseDurationSinceDiagnosis[diseasedur$IDs %in% data$SubjID])
+
+data$DiseaseDur=as.numeric(data$DiseaseDur)
+
+
+target= read.csv('~/Desktop/Alex_fingerprinting/NEW_features_4_fingeprinting_target.csv', header = FALSE)
+
+database= read.csv('~/Desktop/Alex_fingerprinting/NEW_features_4_fingeprinting_database.csv', header = FALSE)
+
+target=target[-1,- length(target)]
+database=database[-1,- length(target)]
+
+target=target[,-1]
+database=database[,-1]
+
+a=rep(1:12,68)
+b=rep(0:67,each=12)
+index=a+b*451
+
+target_delta=target[,index]
+database_delta=database[,index]
+
+corr_delta=cor(t(database_delta),t(target_delta)) 
+self_corr=diag(corr_delta)
+
+tt=apply(corr_delta, 1, which.max)
+sum(seq(2,155)==tt)/154
+
+database_deltaC= database_delta[1:75,]
+target_deltaC= target_delta[1:75,]
+
+corr_deltaC=cor(t(database_deltaC),t(target_deltaC)) 
+#self_corr=diag(corr_delta)
+
+tt=apply(corr_deltaC, 1, which.max)
+sum(seq(1:75)==tt)/75
+
+
+database_deltaPD= database_delta[76:154,]
+target_deltaPD= target_delta[76:154,]
+
+corr_deltaPD=cor(t(database_deltaPD),t(target_deltaPD)) 
+#self_corr=diag(corr_delta)
+
+tt=apply(corr_deltaPD, 1, which.max)
+sum(seq(1:79)==tt)/79
+
+
+hist(self_corr[1:75])
+hist(self_corr[76:154])
+
+mean(self_corr[1:75])
+mean(self_corr[76:154])
+
+t.test(self_corr[1:75],self_corr[76:154] )
+
+RVAideMemoire::perm.t.test(self_corr[1:75],self_corr[76:154], nperm=1000)
+
+
+
+data4plot= data.frame(corrs= c(self_corr[1:75]), group= c(rep('Controls', 75)))
+
+
+ggplot(data4plot, aes(corrs, color= group, fill=group, alpha=0.5)) +
+  geom_density(aes( color= group, fill=group), alpha= 0.5, bins = 20) +
+  theme_minimal() +
+  labs(x = "self correlation", y = "denstity")  + xlim(c(0.2,1)) +
+  ggtitle("") + scale_fill_manual(values=cbbPalette[c(1,3)]) + scale_color_manual(values=cbbPalette[c(1,3)]) 
+
+data4plot= data.frame(corrs= c(self_corr[1:75],self_corr[76:154]), group= c(rep('Controls', 75),rep('Parkinson', 79)))
+
+
+cbbPalette <- c( "#90319D","#E25987","#FFBF00","#3A3AA4", "#31CD71", "#F0792C", "#6C3ABF")
+
+ggplot(data4plot, aes(corrs, color= group, fill=group, alpha=0.5)) +
+  geom_density(aes( color= group, fill=group), alpha= 0.5, bins = 20) +
+  #geom_histogram(aes(y=..density.., color= group, fill=group), alpha= 0.5, bins = 20) +
+  theme_minimal() +
+  labs(x = "self correlation", y = "denstity")  + theme_classic2() +
+  ggtitle("") + scale_fill_manual(values=cbbPalette[c(1,3)]) + scale_color_manual(values=cbbPalette[c(1,3)]) 
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/figure/hist_of_self_corr_delta.pdf', device = "pdf")
+
+
+ggplot(data4plot, aes(corrs, color= group, fill=group, alpha=0.5)) +
+  geom_density(aes( color= group, fill=group), alpha= 0.5, bins = 20, show.legend = FALSE) +
+  theme_minimal() +
+  labs(x = "self correlation", y = "denstity")  + theme_classic2() +
+  ggtitle("") + scale_fill_manual(values=cbbPalette[c(1,3)]) + scale_color_manual(values=cbbPalette[c(1,3)]) 
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/figure/hist_of_self_corr_delta_nolegend.pdf', device = "pdf")
+
+
+newcorr_delta= corr_delta
+diag(newcorr_delta) = NA
+
+hist(newcorr_delta[1:75, 1:75])
+hist(newcorr_delta[76:154, 76:154])
+
+RVAideMemoire::perm.t.test(newcorr_delta[1:75, 1:75],newcorr_delta[76:154, 76:154], nperm=1000)
+
+
+data4plot= data.frame(corrs= c(newcorr_delta[1:75, 1:75],newcorr_delta[76:154, 76:154]), group= c(rep('Controls', 75*75),rep('Parkinson', 79*79)) )
+
+
+
+
+ggplot(data4plot, aes(corrs, color= group, fill=group, alpha=0.5)) +
+  geom_density(aes( color= group, fill=group), alpha= 0.5, bins = 20) +
+  theme_minimal() +
+  labs(x = "correlation to others in cohort", y = "denstity")  + theme_classic2() +
+  ggtitle("") + scale_fill_manual(values=cbbPalette[c(1,3)]) + scale_color_manual(values=cbbPalette[c(1,3)]) 
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/figure/hist_of_other_corr_delta.pdf', device = "pdf")
+
+
+ggplot(data4plot, aes(corrs, color= group, fill=group, alpha=0.5)) +
+  geom_density(aes( color= group, fill=group), alpha= 0.5, bins = 20, show.legend = FALSE) +
+  theme_minimal() +
+  labs(x = "correlation to others in cohort", y = "denstity")  + theme_classic2() +
+  ggtitle("") + scale_fill_manual(values=cbbPalette[c(1,3)]) + scale_color_manual(values=cbbPalette[c(1,3)]) 
+
+ggsave('/Users/jasondsc/Desktop/Alex_fingerprinting/figure/hist_of_other_corr_delta_nolegend.pdf', device = "pdf")
+
+```
+
+
+
+Now let us check that this is not driven by recording artifacts 
+
+```{r differentiability empty room analysis}
+
+data=read.csv('~/Desktop/Alex_fingerprinting/QPN_demo_with_fingerprinting_score_emptyroom.csv', stringsAsFactors = FALSE)
+
+data2=read.csv('~/Desktop/Alex_fingerprinting/BD_RPQ_UPDATE_Neuropsy_PD.csv', na.strings = c('NA', "Na", '999'), stringsAsFactors = FALSE)
+
+matched_id= data$SubjID[data$SubjID %in% data2$Patient..]
+
+data$moca2[data$SubjID %in% data2$Patient.. ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% data2$Patient..], matched_id[order(matched_id)], data2$MoCA..Raw.score.[data2$Patient.. %in% data$SubjID])
+data$updrs2[data$SubjID %in% data2$Patient.. ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% data2$Patient..], matched_id[order(matched_id)], data2$UPDRS.Score.part.3[data2$Patient.. %in% data$SubjID])
+
+data$moca2=as.numeric(data$moca2)
+data$updrs2=as.numeric(data$updrs2)
+
+motion = read.csv('~/Desktop/Alex_fingerprinting/QPN_motion_12132021_jason.csv', na.strings = 'NaN', stringsAsFactors = FALSE)
+
+matched_id2= data$SubjID[data$SubjID %in% motion$ID]
+
+
+data$ECG[data$SubjID %in% motion$ID ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% motion$ID], matched_id2[order(matched_id2)], motion$ECG[motion$ID %in% data$SubjID])
+
+data$EOG[data$SubjID %in% motion$ID ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% motion$ID], matched_id2[order(matched_id2)], motion$EOG[motion$ID %in% data$SubjID])
+
+
+data$HLU[data$SubjID %in% motion$ID ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% motion$ID], matched_id2[order(matched_id2)], motion$HLU[motion$ID %in% data$SubjID])
+
+
+data$ECG=as.numeric(data$ECG)
+data$EOG=as.numeric(data$EOG)
+data$HLU=as.numeric(data$HLU)
+
+diseasedur = read.csv('~/Desktop/Alex_fingerprinting/QPN_diseasedurations.csv', na.strings = 'NaN', stringsAsFactors = FALSE)
+colnames(diseasedur)[1]="IDs"
+matched_id2= data$SubjID[data$SubjID %in% diseasedur$IDs]
+
+data$DiseaseDur[data$SubjID %in% diseasedur$IDs ] =  plyr::mapvalues(data$SubjID[data$SubjID %in% diseasedur$IDs], matched_id2[order(matched_id2)], diseasedur$DiseaseDurationSinceDiagnosis[diseasedur$IDs %in% data$SubjID])
+
+data$DiseaseDur=as.numeric(data$DiseaseDur)
+
+
+data4reg=data[data$Group=='Parkinson',]
+data4reg=data4reg[!is.na(data4reg$HLU),]
+data4reg=data4reg[!is.na(data4reg$updrs2),]
+data4reg=data4reg[!is.na(data4reg$moca2),]
+data4reg=data4reg[!is.na(data4reg$DiseaseDur),]
+
+lm0=lm(identifiability_empty ~ 1, data4reg)      
+lm1=lm(identifiability_empty ~ Age + Education_coded + DiseaseDur+ HLU, data4reg)
+lm2=lm(identifiability_empty ~ Age + Education_coded + DiseaseDur+ HLU+ updrs2, data4reg)
+lm3=lm(identifiability_empty ~ Age + Education_coded + DiseaseDur+ HLU+ updrs2 +moca2, data4reg)
+
+anova(lm0,lm1,lm2,lm3)
+summary(lm2)
+sjPlot::tab_model(lm2)
+
+
+bf = regressionBF(identifiability_empty ~ Age + Education_coded + DiseaseDur+ HLU+ updrs2, data4reg, whichModels = "top")
+summary(bf)
+
+
+```
