@@ -12,7 +12,7 @@ Contains codes to i) perform fingerpritning analyses, ii) compute relative contr
 
 Overvire of fingerpritning pipeline:
 
-![alt text](https://github.com/[username]/[reponame]/blob/[branch]/image.jpg?raw=true)
+![alt text](https://github.com/jasondsc/PDneuralfingerprinting/Figures4paper/Figure_1_Oct202.jpg?raw=true)
 
 
 Code is organized in such a way that all the fingerpritning and ICC analyses are done within the pythin environment and saved to a csv
