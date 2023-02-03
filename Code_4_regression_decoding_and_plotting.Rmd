@@ -1,0 +1,2927 @@
+---
+title: "PD_Fingerprinting"
+---
+
+```{r DONE setup & check for demo diff between groups}
+library(dplyr)
+library(ggplot2)
+library(RColorBrewer)
+library("ggpubr")
+library(jtools)
+library(BayesFactor)
+library(corrplot)
+library(ggseg)
+
+cbbPalette <- c( "#90319D","#E25987","#FFBF00","#3A3AA4", "#31CD71", "#F0792C", "#6C3ABF")
+
+# read data and compute data for demographic table
+data=read.csv('~/Documents/PD_fingerprinting/QPN_demo_compiled.csv', stringsAsFactors = FALSE)
+
+data %>% group_by(Group) %>% summarise(m_age= mean(Age, na.rm=TRUE), sd_age= sd(Age, na.rm=TRUE))
+table(data$Group, data$Sex)
+table(data$Group, data$Handedness)
+
+data %>% group_by(Group) %>% summarise(m_age= mean(Education_coded, na.rm=TRUE), sd_age= sd(Education_coded, na.rm=TRUE))
+
+data %>% group_by(Group) %>% summarise(m_age= mean(Hoehn.and.Yahr.score, na.rm=TRUE), sd_age= sd(Hoehn.and.Yahr.score, na.rm=TRUE))
+
+data %>% group_by(Group) %>% summarise(m_age= mean(updrs2, na.rm=TRUE), sd_age= sd(updrs2, na.rm=TRUE))
+
+data %>% group_by(Group) %>% summarise(m_age= mean( moca2, na.rm=TRUE), sd_age= sd(moca2, na.rm=TRUE))
+
+t.test(data$Age[data$Group== 'Control'],data$Age[data$Group== 'Parkinson'])
+sd(data$Age[data$Group== 'Control'])
+t.test(data$Education_coded[data$Group== 'Control'],data$Education_coded[data$Group== 'Parkinson'])
+sd(data$Education_coded[data$Group== 'Control'])
+
+contingency_tab=table(data$Group, data$Sex)
+
+chisq.test(contingency_tab[1:2,2:3], simulate.p.value = TRUE)
+
+contingency_tab=table(data$Group, data$Handedness)
+
+chisq.test(contingency_tab[1:2,3:4], simulate.p.value = TRUE)
+
+t.test(data$recording_length[data$Group =='Control'], data$recording_length[data$Group =='Parkinson'])
+
+
+```
+
+
+Project on QPN data using controls to fingerprint Parkinsons Disease Patnetins 
+
+First we plot the results of fingerprinting from three types of cohorts:
+  1) within PD
+  2) within controls 
+  3) PD within controls
+
+```{r DONE fingerprinting accuracy}
+
+# plot fingerpritning accuracy for all conditions (differentiation accuracy)
+df=read.csv("~/Documents/PD_fingerprinting/new_analysis_Nov2022/fullband_fingerpritninf.csv", header = TRUE, stringsAsFactors = FALSE)
+df$Experiment= factor(df$Experiment,levels = c("CTL", "PD",'PDvsHC'))
+df$Band= factor(df$Band,levels = c("fullband"))
+df$Band=plyr::mapvalues(df$Band, unique(df$Band), c("broadband"))
+
+ggplot(data=df, aes(x=Band, y=ACC_boot, fill=Experiment, width=.5)) +  coord_cartesian(ylim=c(0,100))+geom_bar(stat = "identity", position=position_dodge(width = 0.5)) +
+geom_errorbar(aes(ymin=ACC_lowerCI, ymax=ACC_upperCI), width=.2 ,position=position_dodge(.5)) +theme_classic2() + scale_fill_manual(values=cbbPalette) + labs(y="Accuracy (%)", x="",title="") + theme(text = element_text(size=35), legend.title=element_blank())
+
+ggsave('~/Documents/PD_fingerprinting/figure/fingerprinting_cohort_new_all.pdf', device = "pdf", width=8, height=8, dpi=800)
+
+
+# PLOT APERIODIC 
+
+df=read.csv("~/Documents/PD_fingerprinting/fingerprinting_accuracy_aperiodic.csv", header = TRUE, stringsAsFactors = FALSE)
+df$Experiment= factor(df$Experiment,levels = c("CTL", "PD",'PDvsHC'))
+df$Band= factor(df$Band,levels = c("fullband", 'aperiodic', 'aperiodic corrected'))
+df$Band=plyr::mapvalues(df$Band, unique(df$Band), c("broadband", 'aperiodic', 'aperiodic corrected'))
+
+ggplot(data=df, aes(x=Band, y=ACC_boot, fill=Experiment, width=.5)) +  coord_cartesian(ylim=c(0,100))+geom_bar(stat = "identity", position=position_dodge(width = 0.5)) +
+geom_errorbar(aes(ymin=ACC_lowerCI, ymax=ACC_upperCI), width=.2 ,position=position_dodge(.5)) +theme_classic2() + scale_fill_manual(values=cbbPalette) + labs(y="Accuracy (%)", x="",title="") + theme(text = element_text(size=35), legend.title=element_blank())
+
+ggsave('~/Documents/PD_fingerprinting/figure/fingerprinting_cohort_new_aperiodic.pdf', device = "pdf", width=12, height=8, dpi=800)
+
+
+# PLOT EMPTY ROOM
+df=read.csv("~/Documents/PD_fingerprinting/emptyroom_fingerpritning.csv", header = TRUE, stringsAsFactors = FALSE)
+df$Experiment= factor(df$Experiment,levels = c("CTL", "PD",'PDvsHC'))
+
+ggplot(data=df, aes(x=Band, y=ACC, fill=Experiment, width=.5)) +  coord_cartesian(ylim=c(0,100))+geom_bar(stat = "identity", position=position_dodge(width = 0.5)) +
+ theme_classic2() + scale_fill_manual(values=cbbPalette) + labs(y="Accuracy (%)", x="",title="") + theme(text = element_text(size=35), legend.title=element_blank()) + scale_fill_grey()
+
+ggsave('~/Documents/PD_fingerprinting/figure/fingerprinting_emptyroom.pdf', device = "pdf", width=8, height=8, dpi=800)
+
+
+# PLOT EMPTY ROOM
+df=read.csv("~/Documents/PD_fingerprinting/emptyroom_fingerpritning.csv", header = TRUE, stringsAsFactors = FALSE)
+df$Experiment= factor(df$Experiment,levels = c("CTL", "PD",'PDvsHC'))
+
+ggplot(data=df, aes(x=Band, y=ACC, fill=Experiment, width=.5)) +  coord_cartesian(ylim=c(0,10))+geom_bar(stat = "identity", position=position_dodge(width = 0.5)) +
+ theme_classic2() + scale_fill_manual(values=cbbPalette) + labs(y="Accuracy (%)", x="",title="") + theme(text = element_text(size=35), legend.title=element_blank()) + scale_fill_grey()
+
+ggsave('~/Documents/PD_fingerprinting/figure/fingerprinting_emptyroom2.pdf', device = "pdf", width=8, height=8, dpi=800)
+
+
+```
+
+
+
+
+```{r DONE auto and corss correlation }
+
+# read data and compute data for demographic table
+data=read.csv('~/Documents/PD_fingerprinting/QPN_demo_compiled.csv', stringsAsFactors = FALSE)
+
+target= read.csv('~/Documents/Alex_fingerprinting/NEW_features_4_fingeprinting_target.csv', header = FALSE)
+
+database= read.csv('~/Documents/Alex_fingerprinting/NEW_features_4_fingeprinting_database.csv', header = FALSE)
+
+target=target[-1,- length(target)]
+database=database[-1,- length(target)]
+
+target=target[,-1]
+database=database[,-1]
+
+data2=read.csv('/Users/jason/Documents/Alex_fingerprinting/auto_cross_corrs.csv')
+
+#data= data[data2$recording_length > 50, ]
+target= target[data2$recording_length > 50, ]
+database= database[data2$recording_length > 50, ]
+
+# broadband 
+corr_bb=cor(t(database),t(target)) 
+self_corrbb=diag(corr_bb)
+
+tt=apply(corr_bb, 1, which.max)
+sum(seq(1,133)==tt)/133
+
+tt=apply(corr_bb, 2, which.max)
+sum(seq(1,133)==tt)/133
+
+
+hist(self_corrbb[1:54])
+hist(self_corrbb[54:133])
+
+mean(self_corrbb[1:54])
+mean(self_corrbb[55:133])
+
+RVAideMemoire::perm.t.test(DescTools::FisherZ(self_corrbb[1:54]),DescTools::FisherZ(self_corrbb[55:133]), nperm=1000)
+
+#RVAideMemoire::perm.t.test(self_corrbb[1:75],self_corrbb[76:154], nperm=1000)
+
+
+data4plot= data.frame(corrs= c(self_corrbb[1:54],self_corrbb[55:133]), group= c(rep('Controls', 54),rep('Parkinson', 79)))
+
+cbbPalette <- c( "#90319D","#E25987","#FFBF00","#3A3AA4", "#31CD71", "#F0792C", "#6C3ABF")
+
+ggplot(data4plot, aes(corrs, color= group, fill=group, alpha=0.5)) +
+  geom_density(aes( color= group, fill=group), alpha= 0.5, bins = 20) +
+  #geom_histogram(aes(y=..density.., color= group, fill=group), alpha= 0.5, bins = 20) +
+  theme_minimal() +
+  labs(x = "self correlation", y = "denstity")  + theme_classic2() +
+  ggtitle("") + scale_fill_manual(values=cbbPalette[c(1,3)]) + scale_color_manual(values=cbbPalette[c(1,3)]) 
+
+ggsave('~/Documents/PD_fingerprinting/new_analysis_Nov2022/figure/hist_of_self_corr_broadband.pdf', device = "pdf")
+
+
+data_plot=data4plot
+ggplot(data=data4plot, aes(x=group, y=corrs, colour=group, width=.5)) + stat_summary(fun.data = mean_se, geom = "errorbar", size=2.5, width=0.5)   + stat_summary(fun = "mean", geom = "point", size=5) +theme_classic() + labs(y="auto-correlation (r)", x="",title="") +  theme(text = element_text(size=40), legend.position = 'none', legend.title=element_blank()) + coord_cartesian(ylim = c(0.8, 0.9)) + scale_color_manual(values=cbbPalette[c(1,2,3)]) + scale_fill_manual(values=cbbPalette[c(1,2,3)]) 
+
+ggsave('~/Documents/PD_fingerprinting/new_analysis_Nov2022/figure/Long_auto_corr_boxplot.pdf', device = "pdf", width=8, height=8, dpi=800)
+
+
+newcorr_bb= corr_bb
+diag(newcorr_bb) = NA
+
+data4plot= data.frame(corrs= c(newcorr_bb[1:54, 1:54],newcorr_bb[55:133, 55:133]), group= c(rep('Controls', 54*54),rep('Parkinson', 79*79)) )
+
+ggplot(data4plot, aes(corrs, color= group, fill=group, alpha=0.5)) +
+  geom_density(aes( color= group, fill=group), alpha= 0.5, bins = 20) +
+  theme_minimal() +
+  labs(x = "correlation to others in cohort", y = "denstity")  + theme_classic2() +
+  ggtitle("") + scale_fill_manual(values=cbbPalette[c(1,3)]) + scale_color_manual(values=cbbPalette[c(1,3)]) 
+
+ggsave('~/Documents/PD_fingerprinting/new_analysis_Nov2022/figure/hist_of_other_corr_delta.pdf', device = "pdf")
+
+
+newcorr_bb= corr_bb
+diag(newcorr_bb) = NA
+cross_corr= c(rowMeans(newcorr_bb[1:54,1:54], na.rm= TRUE), rowMeans(newcorr_bb[55:133,55:133], na.rm= TRUE))
+
+
+mean(rowMeans(cbind(rowMeans(newcorr_bb[55:133,1:54], na.rm= TRUE),colMeans(newcorr_bb[1:54,55:133], na.rm= TRUE))))
+
+sd(rowMeans(cbind(rowMeans(newcorr_bb[55:133,1:54], na.rm= TRUE),colMeans(newcorr_bb[1:54,55:133], na.rm= TRUE))))
+
+
+data4plot= data.frame(corrs= cross_corr, group= c(rep('Controls', 54),rep('Parkinson', 79)) )
+
+data4plot=na.omit(data4plot)
+ggplot(data=data4plot, aes(x=group, y=corrs, colour=group, width=.5)) + stat_summary(fun.data = mean_se, geom = "errorbar", size=2.5, width=0.5) + stat_summary(fun.data = "mean_cl_boot", geom = "point", size= 7,)  +theme_classic() + labs(y="cross-correlation (r)", x="",title="") +  theme(text = element_text(size=40), legend.position = 'none', legend.title=element_blank()) + coord_cartesian(ylim = c(0.37, 0.5)) + scale_color_manual(values=cbbPalette[c(1,2,3)]) + scale_fill_manual(values=cbbPalette[c(1,2,3)]) 
+
+ggsave('~/Documents/PD_fingerprinting/new_analysis_Nov2022/figure/LONG_crosscorr_.pdf', device = "pdf", width=8, height=8, dpi=800)
+
+
+
+```
+
+
+
+Now let us run some models and see how fingerprinting scores relate to particpant demographics 
+
+First we will look at how clinical scores relate to IDENTIFIABILITY
+
+This messure reflects both the self-corr of a participant to themselves and to others too 
+
+
+Now let us check that this is not driven by recording artifacts 
+
+```{r DONE differentiability motor symptoms and recording artifacts}
+
+# read data and compute data for demographic table
+data=read.csv('~/Documents/PD_fingerprinting/QPN_demo_compiled.csv', stringsAsFactors = FALSE)
+
+# first let us look at differentibility (identifiability) and physiological artifacts
+data4reg=data[data$Group=='Parkinson',]
+data4reg=data4reg[!is.na(data4reg$HLU),]
+data4reg=data4reg[!is.na(data4reg$EOG),]
+data4reg=data4reg[!is.na(data4reg$ECG),]
+
+
+cor.test(data4reg$identifiability, data4reg$HLU) # some correlation (seems driven by outliers)
+result <- BayesFactor::correlationBF(data4reg$identifiability, data4reg$HLU)
+bayestestR::bayesfactor(result) # compute BF not much evidence 
+cor.test(data4reg$identifiability, data4reg$EOG)
+cor.test(data4reg$identifiability, data4reg$ECG)
+
+lm3=lm(identifiability ~ HLU, data4reg)
+summary(lm3)
+
+ggplot(data4reg, aes(x=HLU , y = identifiability, fill=cbbPalette[6])) + 
+  geom_jitter(colour = cbbPalette[6]) + 
+  stat_smooth(method = "lm", colour = 'black',fullrange = T, fill=cbbPalette[6]) +
+  labs(title = paste("Adj R2 = ", signif(summary(lm3)$adj.r.squared, 5),
+                     "Intercept =", signif(lm3$coef[[1]],5 ),
+                     " Slope =", signif(lm3$coef[[2]], 5),
+                     " P =", signif(summary(lm3)$coef[2,4], 5) )) + scale_fill_manual(values=cbbPalette[6])  + theme_classic2() +   xlab("Head motion") + ylab("differentiability")+
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14,face="bold"), legend.position = "none") 
+
+ggsave('~/Documents/PD_fingerprinting/figure/Regression_differentiability_Head_motion.pdf', device = "pdf", width=5, height=5, dpi=800)
+
+lm3=lm(identifiability ~ EOG, data4reg)
+
+ggplot(data4reg, aes(x=EOG , y = identifiability, fill=cbbPalette[5])) + 
+  geom_jitter(colour = cbbPalette[5]) + 
+  stat_smooth(method = "lm", colour = 'black',fullrange = T,fill=cbbPalette[5]) +
+  labs(title = paste("Adj R2 = ", signif(summary(lm3)$adj.r.squared, 5),
+                     "Intercept =", signif(lm3$coef[[1]],5 ),
+                     " Slope =", signif(lm3$coef[[2]], 5),
+                     " P =", signif(summary(lm3)$coef[2,4], 5) )) + scale_fill_manual(values=cbbPalette[5])  + theme_classic2() +   xlab("Ocular artifacts") + ylab("differentiability")+
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14,face="bold"), legend.position = "none") 
+
+ggsave('~/Documents/PD_fingerprinting/figure/Regression_differentiability_EOG.pdf', device = "pdf", width=5, height=5, dpi=800)
+
+lm3=lm(identifiability ~ ECG, data4reg)
+
+ggplot(data4reg, aes(x=ECG , y = identifiability, fill=cbbPalette[4])) + 
+  geom_jitter(colour = cbbPalette[4]) + 
+  stat_smooth(method = "lm", colour = 'black',fullrange = T, fill=cbbPalette[4]) +
+  labs(title = paste("Adj R2 = ", signif(summary(lm3)$adj.r.squared, 5),
+                     "Intercept =", signif(lm3$coef[[1]],5 ),
+                     " Slope =", signif(lm3$coef[[2]], 5),
+                     " P =", signif(summary(lm3)$coef[2,4], 5) )) + scale_fill_manual(values=cbbPalette[4])  + theme_classic2() +   xlab("Cardiac artifacts") + ylab("differentiability")+
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14,face="bold"), legend.position = "none") 
+
+ggsave('~/Documents/PD_fingerprinting/figure/Regression_differentiability_ECG.pdf', device = "pdf", width=5, height=5, dpi=800)
+
+
+# run regression to test relationship between motor symptoms and differentiability 
+data4reg=data[data$Group=='Parkinson',]
+data4reg=data4reg[!is.na(data4reg$HLU),]
+data4reg=data4reg[!is.na(data4reg$EOG),]
+data4reg=data4reg[!is.na(data4reg$ECG),]
+data4reg=data4reg[!is.na(data4reg$updrs2),]
+data4reg=data4reg[!is.na(data4reg$moca2),]
+data4reg=data4reg[!is.na(data4reg$DiseaseDur),]
+
+lm0=lm(identifiability ~ 1, data4reg)      
+lm1=lm(identifiability ~ Age + Education_coded + DiseaseDur, data4reg)
+lm2=lm(identifiability ~ Age + Education_coded + DiseaseDur+ updrs2, data4reg)
+
+anova(lm0,lm1,lm2)
+summary(lm2)
+sjPlot::tab_model(lm2)
+
+bf = regressionBF(identifiability ~ Age + Education_coded + DiseaseDur+ updrs2, data4reg, whichModels = "top")
+
+lm0=lm(identifiability ~ 1, data4reg)      
+lm1=lm(identifiability ~ Age + Education_coded + DiseaseDur+ HLU, data4reg)
+lm2=lm(identifiability ~ Age + Education_coded + DiseaseDur+ HLU+ updrs2, data4reg)
+
+anova(lm0,lm1,lm2)
+summary(lm2)
+sjPlot::tab_model(lm2)
+
+pdf("~/Documents/PD_fingerprinting/figure/Check_of_regression_assumptions_head.pdf") 
+performance::check_model(lm2)
+dev.off()
+
+max(cooks.distance(lm2))
+
+
+lm0=lm(identifiability ~ 1, data4reg)      
+lm1=lm(identifiability ~ Age + Education_coded + DiseaseDur+ HLU, data4reg)
+lm2=lm(identifiability ~ Age + Education_coded + DiseaseDur+ HLU+ updrs2 + recording_length, data4reg)
+
+anova(lm0,lm1,lm2)
+summary(lm2)
+sjPlot::tab_model(lm2)
+
+pdf("~/Documents/PD_fingerprinting/figure/Check_of_regression_assumptions_head_rec.pdf") 
+performance::check_model(lm2)
+dev.off()
+
+
+bf = regressionBF(identifiability ~ Age + Education_coded + DiseaseDur+ HLU+ updrs2, data4reg, whichModels = "top")
+
+pdf("/Users/jasondsc/Documents/Alex_fingerprinting/figure/BF_Regression_self_id_corrected4head_full_model.pdf") 
+plot(bf)
+dev.off()
+summary(bf)
+
+
+lm0=lm(identifiability ~ 1, data4reg)      
+lm1=lm(identifiability ~ Age + Education_coded + DiseaseDur+ HLU, data4reg)
+lm2=lm(identifiability ~ Age + Education_coded + DiseaseDur+ HLU+ updrs2, data4reg)
+
+
+bf = regressionBF(identifiability ~ Age + Education_coded + DiseaseDur+ updrs2 + HLU, data4reg, whichModels = "top")
+summary(bf)
+
+
+# final plot for effect once we corrected for everything 
+data4reg=data[data$Group=='Parkinson',]
+data4reg=data4reg[!is.na(data4reg$HLU),]
+data4reg=data4reg[!is.na(data4reg$updrs2),]
+data4reg=data4reg[!is.na(data4reg$moca2),]
+data4reg=data4reg[!is.na(data4reg$DiseaseDur),]
+
+lm3=lm(identifiability ~ Age + Education_coded + DiseaseDur+ HLU+ updrs2, data4reg)
+summary(lm3)
+sjPlot::tab_model(lm3)
+
+
+lmtemp1=lm(identifiability ~ Age + Education_coded + DiseaseDur+ HLU , data4reg)
+lmtemp2=lm(updrs2 ~ Age + Education_coded + DiseaseDur+ HLU , data4reg)
+resid2plot= data.frame(identifiability= lmtemp1$residuals, updrs = lmtemp2$residuals )
+
+
+ggplot(resid2plot, aes(x=updrs , y = identifiability, fill=cbbPalette[1])) + 
+  geom_jitter(colour = cbbPalette[1]) + 
+  stat_smooth(method = "lm", colour = 'black',fullrange = T) +
+  labs(title = paste("Adj R2 = ", signif(summary(lm3)$adj.r.squared, 5),
+                     "Intercept =", signif(lm3$coef[[1]],5 ),
+                     " Slope =", signif(lm3$coef[[6]], 5),
+                     " P =", signif(summary(lm3)$coef[6,4], 5) )) + scale_fill_manual(values=cbbPalette[1])  + theme_classic2() +   xlab("UPDRS residuals") + ylab("differentiability residuals")+
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14,face="bold"), legend.position = "none") 
+
+ggsave('~/Documents/PD_fingerprinting/figure/Regression_self_id_UPDRS_corrected_model.pdf', device = "pdf", width=5, height=5, dpi=800)
+
+
+
+
+lm3=lm(identifiability ~ Age + Education_coded + DiseaseDur+ HLU+ updrs2 + recording_length, data4reg)
+summary(lm3)
+sjPlot::tab_model(lm3)
+
+
+lmtemp1=lm(identifiability ~ Age + Education_coded + DiseaseDur+ HLU+ recording_length , data4reg)
+lmtemp2=lm(updrs2 ~ Age + Education_coded + DiseaseDur+ HLU + recording_length , data4reg)
+resid2plot= data.frame(identifiability= lmtemp1$residuals, updrs = lmtemp2$residuals )
+
+
+ggplot(resid2plot, aes(x=updrs , y = identifiability, fill=cbbPalette[1])) + 
+  geom_jitter(colour = cbbPalette[1]) + 
+  stat_smooth(method = "lm", colour = 'black',fullrange = T) +
+  labs(title = paste("Adj R2 = ", signif(summary(lm3)$adj.r.squared, 5),
+                     "Intercept =", signif(lm3$coef[[1]],5 ),
+                     " Slope =", signif(lm3$coef[[6]], 5),
+                     " P =", signif(summary(lm3)$coef[6,4], 5) )) + scale_fill_manual(values=cbbPalette[1])  + theme_classic2() +   xlab("UPDRS residuals") + ylab("differentiability residuals")+
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14,face="bold"), legend.position = "none") 
+
+ggsave('~/Documents/PD_fingerprinting/figure/Regression_self_id_UPDRS_corrected_model_with_recording_length.pdf', device = "pdf", width=5, height=5, dpi=800)
+
+
+
+
+```
+
+
+
+
+```{r DONE permutation test of UPDRS & differentiability regression }
+
+# read data and compute data for demographic table
+data=read.csv('~/Documents/PD_fingerprinting/QPN_demo_compiled.csv', stringsAsFactors = FALSE)
+
+data$moca_bin= data$moca2 > 24
+
+data4reg=data[data$Group=='Parkinson',]
+data4reg=data4reg[!is.na(data4reg$HLU),]
+data4reg=data4reg[!is.na(data4reg$updrs2),]
+data4reg=data4reg[!is.na(data4reg$moca2),]
+data4reg=data4reg[!is.na(data4reg$DiseaseDur),]
+
+lm3=lm(identifiability ~ Age + Education_coded + DiseaseDur+ HLU+ updrs2, data4reg)
+summary(lm3)
+sjPlot::tab_model(lm3)
+
+
+null_coeff_updrs=c()
+for (i in 1:1000){
+rand_data=data4reg
+rand_data$updrs2= rand_data$updrs2[sample(length(rand_data$updrs2))]
+
+lm3=lm(identifiability ~ Age + Education_coded + DiseaseDur+ HLU+ updrs2, rand_data)
+null_coeff_updrs[i]=lm3$coefficients[6]
+
+}
+
+p_val=sum(null_coeff_updrs > 0.03264849)/1000
+
+lm3=lm(identifiability ~ Age + Education_coded + DiseaseDur+ HLU+ updrs2, data4reg)
+summary(lm3)
+sjPlot::tab_model(lm3)
+
+data4plot= data.frame(null= null_coeff_updrs)
+
+ggplot(data4plot, aes(x = null)) + 
+  geom_density(lwd = 1.2,
+               fill = '#D3D3D3',
+               colour = '#D3D3D3') + theme_classic2() + geom_vline(xintercept = 0.03236, colour= 2, size=2) +labs(y="density", x="beta coefficent",title = paste("permuted p value = ", signif(p_val, 5)))
+
+ggsave('~/Documents/PD_fingerprinting/figure/permutation_distribution_4_updrs_coeff.pdf', device = "pdf", width=8, height=8, dpi=800)
+
+
+lm3=lm(identifiability ~ Age + Education_coded + DiseaseDur+ HLU+ updrs2*moca_bin, data4reg)
+summary(lm3)
+sjPlot::tab_model(lm3)
+
+null_coeff_interaction=c()
+for (i in 1:1000){
+rand_data=data4reg
+rand_data$updrs2= rand_data$updrs2[sample(length(rand_data$updrs2))]
+
+lm3=lm(identifiability ~ Age + Education_coded + DiseaseDur+ HLU+ updrs2*moca_bin, rand_data)
+null_coeff_interaction[i]=lm3$coefficients[8]
+
+}
+
+p_val=sum(null_coeff_interaction < -0.059741641)/1000
+data4plot= data.frame(null= null_coeff_interaction)
+
+ggplot(data4plot, aes(x = null)) + 
+  geom_density(lwd = 1.2,
+               fill = '#D3D3D3',
+               colour = '#D3D3D3') + theme_classic2() + geom_vline(xintercept = -0.062949, colour= 2, size=2) +labs(y="density", x="beta coefficent",title = paste("permuted p value = ", signif(p_val, 5)))
+
+
+ggsave('~/Documents/PD_fingerprinting/figure/permutation_distribution_4_interaction_coeff.pdf', device = "pdf", width=8, height=8, dpi=800)
+
+```
+
+
+AIC approachto look at which regions are most importnat 
+
+
+```{r DONE AIC ROI}
+
+# read data and compute data for demographic table
+data=read.csv('~/Documents/PD_fingerprinting/QPN_demo_compiled.csv', stringsAsFactors = FALSE)
+
+
+self_id_roi = read.csv('~/Documents/PD_fingerprinting/new_analysis_Nov2022/AIC_ROI_differentiability_fullband.csv', header = FALSE)
+self_id_roi= self_id_roi[-1,-1]
+self_id_roi=as.data.frame(t(self_id_roi))
+self_id_roi = cbind(data, self_id_roi)
+
+
+data4reg=self_id_roi[self_id_roi$Group=='Parkinson',]
+data4reg=data4reg[!is.na(data4reg$HLU),]
+data4reg=data4reg[!is.na(data4reg$updrs2),]
+data4reg=data4reg[!is.na(data4reg$moca2),]
+data4reg=data4reg[!is.na(data4reg$DiseaseDur),]
+
+
+lm2=lm(updrs2 ~ Age + Education_coded +   DiseaseDur+ HLU+ identifiability, data4reg)
+sjPlot::tab_model(lm2)
+
+coef_AIC= matrix(, nrow = 68, ncol = 6)
+AIC= matrix(, nrow = 68, ncol = 1)
+AIC_lm2 = vector(mode = "list", length = 68)
+
+for (i in 1:68){
+  
+  lm_temp=lm(updrs2 ~ Age + Education_coded +   DiseaseDur+ HLU+ data4reg[,i+26], data4reg)
+  AIC_lm2[i]=lm_temp
+  tab=summary(lm_temp)
+  coef_AIC[i,]=tab$coefficients[,1]
+  AIC[i,1]=AIC(lm_temp)
+  
+}
+
+AIC(lm2) - AIC
+
+
+df=read.csv('~/Documents/Alex_fingerprinting/PSD_ICC_orig_PD_new_PKD2.csv', header = FALSE, stringsAsFactors = FALSE)
+colnames(df)[1]='region'
+df=df[,1:2]
+df$hemi =''
+df$hemi[seq(2,68,2)] ='right'
+df$hemi[seq(1,67,2)] ='left'
+df$ACC= abs(AIC(lm2) - AIC)
+
+
+someData2= df
+colnames(someData2)[2]='Fingerprinting accuracy'
+colnames(someData2)[1]='region'
+colnames(someData2)[3]='hemi'
+
+someData2$ACC[someData2$ACC> 3]=3
+
+ggplot(someData2) +
+  geom_brain(atlas = dk, 
+             position = position_brain(hemi ~ side),
+             aes(fill = `ACC`)) +
+  #scale_fill_distiller(palette = "RdBu"
+  #                     , limits = c(0.4, 0.9))+
+  viridis::scale_fill_viridis(option = 'magma', limits=c(0, 3 ))+
+  #scale_fill_gradient2(low="white", mid="#EC352F", high="#6C1917", 
+  #                     midpoint=0.6,   
+  #                     limits=c(0.4, 0.9 ))+
+  theme_void() 
+
+ggsave('~/Documents/PD_fingerprinting/ICC_output/ROI_AIC_PD.pdf', device = "pdf")
+
+
+```
+
+
+Now let us look at quantifying an effect with the aperiodic components of the spectra 
+
+```{r DONE MOCA UPDRS Interaction effect }
+
+# read data and compute data for demographic table
+data=read.csv('~/Documents/PD_fingerprinting/QPN_demo_compiled.csv', stringsAsFactors = FALSE)
+
+data$moca_bin= data$moca2 > 24
+data4reg=data[data$Group=='Parkinson',]
+data4reg=data4reg[!is.na(data4reg$HLU),]
+data4reg=data4reg[!is.na(data4reg$updrs2),]
+data4reg=data4reg[!is.na(data4reg$moca_bin),]
+data4reg=data4reg[!is.na(data4reg$DiseaseDur),]
+
+
+lm0=lm(identifiability ~ 1, data4reg)
+lm1=lm(identifiability ~ Age + Education_coded + DiseaseDur+ HLU, data4reg)
+lm2=lm(identifiability ~ Age + Education_coded + DiseaseDur+ HLU+  updrs2, data4reg)
+lm3=lm(identifiability ~ Age + Education_coded + DiseaseDur+ HLU+ updrs2+ moca_bin, data4reg)
+lm4=lm(identifiability ~ Age + Education_coded + DiseaseDur+ HLU+ updrs2+ moca_bin + updrs2*moca_bin, data4reg)
+
+anova(lm0,lm1,lm2,lm3,lm4)
+summary(lm4)
+sjPlot::tab_model(lm4)
+
+lmtemp1=lm(identifiability ~ Age + Education_coded + DiseaseDur+ HLU , data4reg)
+lmtemp2=lm(updrs2 ~ Age + Education_coded + DiseaseDur+ HLU , data4reg)
+resid2plot= data.frame(identifiability= lmtemp1$residuals, updrs = lmtemp2$residuals, moca_bin= data4reg$moca_bin )
+
+bf= generalTestBF(identifiability ~ Age + Education_coded + DiseaseDur+ HLU+ updrs2+ moca_bin + updrs2*moca_bin, data4reg, whichModels = "top")
+summary(bf)
+
+ggplot(resid2plot, aes(x=updrs , y = identifiability, fill=moca_bin)) + 
+  geom_jitter(aes(fill=moca_bin, colour = moca_bin)) + 
+  stat_smooth(method = "lm", colour = 'black',fullrange = T) +
+  labs(title = paste("Adj R2 = ", signif(summary(lm4)$adj.r.squared, 5),
+                     "Intercept =", signif(lm4$coef[[1]],5 ),
+                     " Slope =", signif(lm4$coef[[8]], 5),
+                     " P =", signif(summary(lm4)$coef[8,4], 5) )) + scale_color_manual(values=cbbPalette[c(4,6)]) + scale_fill_manual(values=cbbPalette[c(4,6)])  + theme_classic2() +   xlab("UPDRS residuals") + ylab("differentiability residuals")+
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14,face="bold")) 
+
+ggsave('~/Documents/PD_fingerprinting/figure/Regression_self_id_UPDRS_moca_interaction.pdf', device = "pdf", width=5, height=5, dpi=800)
+
+
+ggplot(resid2plot, aes(x=updrs , y = identifiability, fill=moca_bin)) + 
+  geom_jitter(aes(fill=moca_bin, colour = moca_bin)) + 
+  stat_smooth(method = "lm", colour = 'black',fullrange = T) +
+  labs(title = paste("Adj R2 = ", signif(summary(lm4)$adj.r.squared, 5),
+                     "Intercept =", signif(lm4$coef[[1]],5 ),
+                     " Slope =", signif(lm4$coef[[8]], 5),
+                     " P =", signif(summary(lm4)$coef[8,4], 5) )) + scale_color_manual(values=cbbPalette[c(4,6)]) + scale_fill_manual(values=cbbPalette[c(4,6)])  + theme_classic2() +   xlab("UPDRS residuals") + ylab("differentiability residuals")+
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14,face="bold"), legend.position = 'none') 
+
+ggsave('~/Documents/PD_fingerprinting/figure/Regression_self_id_UPDRS_moca_interaction_nolegend.pdf', device = "pdf", width=5, height=5, dpi=800)
+
+
+# effect remains if we add in recording length (i.e., No. of clean epochs)
+
+lm0=lm(identifiability ~ 1, data4reg)
+lm1=lm(identifiability ~ Age + Education_coded + DiseaseDur+ HLU + recording_length, data4reg)
+lm2=lm(identifiability ~ Age + Education_coded + DiseaseDur+ HLU+ recording_length+  updrs2, data4reg)
+lm3=lm(identifiability ~ Age + Education_coded + DiseaseDur+ HLU+ recording_length+ updrs2+ moca_bin, data4reg)
+lm4=lm(identifiability ~ Age + Education_coded + DiseaseDur+ HLU+ recording_length+ updrs2+ moca_bin + updrs2*moca_bin, data4reg)
+
+anova(lm0,lm1,lm2,lm3,lm4)
+summary(lm4)
+sjPlot::tab_model(lm4)
+
+
+```
+
+
+
+
+```{r DONE AIC MOCA interaction}
+
+
+# read data and compute data for demographic table
+data=read.csv('~/Documents/PD_fingerprinting/QPN_demo_compiled.csv', stringsAsFactors = FALSE)
+
+
+self_id_roi = read.csv('~/Documents/PD_fingerprinting/new_analysis_Nov2022/AIC_ROI_differentiability_fullband.csv', header = FALSE)
+self_id_roi= self_id_roi[-1,-1]
+self_id_roi=as.data.frame(t(self_id_roi))
+self_id_roi = cbind(data, self_id_roi)
+
+
+data4reg=self_id_roi[self_id_roi$Group=='Parkinson',]
+data4reg=data4reg[data4reg$moca2 > 24 ,]
+data4reg=data4reg[!is.na(data4reg$HLU),]
+data4reg=data4reg[!is.na(data4reg$updrs2),]
+data4reg=data4reg[!is.na(data4reg$moca2),]
+data4reg=data4reg[!is.na(data4reg$DiseaseDur),]
+
+
+lm2=lm(updrs2 ~ Age + Education_coded +   DiseaseDur+ HLU+ identifiability, data4reg)
+sjPlot::tab_model(lm2)
+
+coef_AIC= matrix(, nrow = 68, ncol = 6)
+AIC= matrix(, nrow = 68, ncol = 1)
+AIC_lm2 = vector(mode = "list", length = 68)
+
+for (i in 1:68){
+  
+  lm_temp=lm(updrs2 ~ Age + Education_coded +   DiseaseDur+ HLU+ data4reg[,i+26], data4reg)
+  AIC_lm2[i]=lm_temp
+  tab=summary(lm_temp)
+  coef_AIC[i,]=tab$coefficients[,1]
+  AIC[i,1]=AIC(lm_temp)
+  
+}
+
+AIC(lm2) - AIC
+
+df=read.csv('~/Documents/Alex_fingerprinting/PSD_ICC_orig_PD_new_PKD2.csv', header = FALSE, stringsAsFactors = FALSE)
+colnames(df)[1]='region'
+df=df[,1:2]
+df$hemi =''
+df$hemi[seq(2,68,2)] ='right'
+df$hemi[seq(1,67,2)] ='left'
+df$ACC= abs(AIC(lm2) - AIC)
+
+
+someData2= df
+colnames(someData2)[2]='Fingerprinting accuracy'
+colnames(someData2)[1]='region'
+colnames(someData2)[3]='hemi'
+
+ggplot(someData2) +
+  geom_brain(atlas = dk, 
+             position = position_brain(hemi ~ side),
+             aes(fill = `ACC`)) +
+  #scale_fill_distiller(palette = "RdBu"
+  #                     , limits = c(0.4, 0.9))+
+  viridis::scale_fill_viridis(option = 'magma', limits=c(3, 11 ))+
+  #scale_fill_gradient2(low="white", mid="#EC352F", high="#6C1917", 
+  #                     midpoint=0.6,   
+  #                     limits=c(0.4, 0.9 ))+
+  theme_void() 
+
+ggsave('~/Documents/PD_fingerprinting/ICC_output/ROI_AIC_Interaction_noMCI.pdf', device = "pdf")
+
+
+
+data4reg=self_id_roi[self_id_roi$Group=='Parkinson',]
+data4reg=data4reg[data4reg$moca2 > 24 ,]
+data4reg=data4reg[!is.na(data4reg$HLU),]
+data4reg=data4reg[!is.na(data4reg$updrs2),]
+data4reg=data4reg[!is.na(data4reg$moca2),]
+data4reg=data4reg[!is.na(data4reg$DiseaseDur),]
+
+
+lm2=lm(updrs2 ~ Age + Education_coded +   DiseaseDur+ HLU+ identifiability, data4reg)
+sjPlot::tab_model(lm2)
+
+coef_AIC= matrix(, nrow = 68, ncol = 6)
+AIC= matrix(, nrow = 68, ncol = 1)
+AIC_lm2 = vector(mode = "list", length = 68)
+
+for (i in 1:68){
+  
+  lm_temp=lm(updrs2 ~ Age + Education_coded +   DiseaseDur+ HLU+ data4reg[,i+26], data4reg)
+  AIC_lm2[i]=lm_temp
+  tab=summary(lm_temp)
+  coef_AIC[i,]=tab$coefficients[,1]
+  AIC[i,1]=AIC(lm_temp)
+  
+}
+
+AIC(lm2) - AIC
+
+df=read.csv('~/Documents/Alex_fingerprinting/PSD_ICC_orig_PD_new_PKD2.csv', header = FALSE, stringsAsFactors = FALSE)
+colnames(df)[1]='region'
+df=df[,1:2]
+df$hemi =''
+df$hemi[seq(2,68,2)] ='right'
+df$hemi[seq(1,67,2)] ='left'
+df$ACC= abs(AIC(lm2) - AIC)
+
+
+someData2= df
+colnames(someData2)[2]='Fingerprinting accuracy'
+colnames(someData2)[1]='region'
+colnames(someData2)[3]='hemi'
+
+ggplot(someData2) +
+  geom_brain(atlas = dk, 
+             position = position_brain(hemi ~ side),
+             aes(fill = `ACC`)) +
+  #scale_fill_distiller(palette = "RdBu"
+  #                     , limits = c(0.4, 0.9))+
+  viridis::scale_fill_viridis(option = 'magma', limits=c(3, 11 ))+
+  #scale_fill_gradient2(low="white", mid="#EC352F", high="#6C1917", 
+  #                     midpoint=0.6,   
+  #                     limits=c(0.4, 0.9 ))+
+  theme_void() 
+
+ggsave('~/Documents/PD_fingerprinting/ICC_output/ROI_AIC_Interaction_MCI.pdf', device = "pdf")
+
+
+```
+
+
+
+
+```{r DONE Aperiodic differentiability effects}
+
+# read data and compute data for demographic table
+data=read.csv('~/Documents/PD_fingerprinting/QPN_demo_compiled.csv', stringsAsFactors = FALSE)
+
+PD_validation_R2 = read.csv('~/Documents/Alex_fingerprinting/PD_validation_R2.csv', na.strings = 'NaN', stringsAsFactors = FALSE, header = FALSE)
+
+PD_training_R2 = read.csv('~/Documents/Alex_fingerprinting/PD_training_R2.csv', na.strings = 'NaN', stringsAsFactors = FALSE, header = FALSE)
+
+HC_validation_R2 = read.csv('~/Documents/Alex_fingerprinting/HC_validation_R2.csv', na.strings = 'NaN', stringsAsFactors = FALSE, header = FALSE)
+
+HC_training_R2 = read.csv('~/Documents/Alex_fingerprinting/HC_training_R2.csv', na.strings = 'NaN', stringsAsFactors = FALSE, header = FALSE)
+
+HC_R2= rowMeans(data.frame(colMeans(HC_training_R2), colMeans(HC_validation_R2)))
+
+PD_R2= rowMeans(data.frame(colMeans(PD_training_R2), colMeans(PD_validation_R2)))
+
+fit=c(HC_R2, PD_R2)
+
+data2=read.csv('/Users/jason/Documents/Alex_fingerprinting/auto_cross_corrs.csv')
+
+fit=fit[data2$recording_length >50]
+data$FOOOF_fit= fit
+
+
+# run above data matrix 
+data$HLU= as.numeric(data$HLU)
+data$EOG= as.numeric(data$EOG)
+data$ECG= as.numeric(data$ECG)
+data4reg=data[data$Group=='Parkinson',]
+data4reg=data4reg[!is.na(data4reg$HLU),]
+data4reg=data4reg[!is.na(data4reg$moca2),]
+data4reg=data4reg[!is.na(data4reg$updrs2),]
+data4reg=data4reg[!is.na(data4reg$DiseaseDur),]
+data4reg=data4reg[!is.na(data4reg$Age),]
+data4reg=data4reg[!is.na(data4reg$Education_coded),]
+
+lm3=lm(identifiability_aperiodic ~ identifiability, data4reg)
+summary(lm3)
+
+ggplot(data4reg, aes(x=identifiability , y = identifiability_aperiodic, fill=cbbPalette[2])) + 
+  geom_jitter(colour = cbbPalette[2]) + 
+  stat_smooth(method = "lm", colour = 'black',fullrange = T) +
+  labs(title = paste("Adj R2 = ", signif(summary(lm3)$adj.r.squared, 5),
+                     "Intercept =", signif(lm3$coef[[1]],5 ),
+                     " Slope =", signif(lm3$coef[[2]], 5),
+                     " P =", signif(summary(lm3)$coef[2,4], 5) )) + scale_fill_manual(values=cbbPalette[2])  + theme_classic2() +   xlab("differentiability ") + ylab("differentiability aperiodic")+
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14,face="bold"), legend.position = "none") 
+
+ggsave('~/Documents/PD_fingerprinting/figure/Regression_differentiability_fullband_and_aperiodic_similarity.pdf', device = "pdf", width=5, height=5, dpi=800)
+
+
+lm0=lm(identifiability_aperiodic ~ 1, data4reg) 
+lm1=lm(identifiability_aperiodic ~ Age + Education_coded + DiseaseDur + HLU, data4reg)
+lm3=lm(identifiability_aperiodic ~ Age + Education_coded+ DiseaseDur + HLU + updrs2, data4reg)
+lm4=lm(identifiability_aperiodic ~ Age + Education_coded+ DiseaseDur + HLU + updrs2 + FOOOF_fit, data4reg)
+
+anova(lm0,lm1,lm3, lm4)
+summary(lm4)
+sjPlot::tab_model(lm4)
+
+bf = regressionBF(identifiability_aperiodic ~ Age + Education_coded+ DiseaseDur + HLU + updrs2 + FOOOF_fit, data4reg, whichModels = "top")
+
+summary(bf)
+
+
+lmtemp1=lm(identifiability_aperiodic ~ Age + Education_coded + DiseaseDur+ HLU + FOOOF_fit, data4reg)
+lmtemp2=lm(updrs2 ~ Age + Education_coded + DiseaseDur+ HLU + FOOOF_fit, data4reg)
+resid2plot= data.frame(identifiability= lmtemp1$residuals, updrs = lmtemp2$residuals )
+
+
+ggplot(resid2plot, aes(x=updrs , y = identifiability, fill=cbbPalette[2])) + 
+  geom_jitter(colour = cbbPalette[2]) + 
+  stat_smooth(method = "lm", colour = 'black',fullrange = T) +
+  labs(title = paste("Adj R2 = ", signif(summary(lm4)$adj.r.squared, 5),
+                     "Intercept =", signif(lm4$coef[[1]],5 ),
+                     " Slope =", signif(lm4$coef[[6]], 5),
+                     " P =", signif(summary(lm4)$coef[6,4], 5) )) + scale_fill_manual(values=cbbPalette[2])  + theme_classic2() +   xlab("UPDRS residuals") + ylab("differentiability aperiodic residuals")+
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14,face="bold"), legend.position = "none") 
+
+ggsave('~/Documents/PD_fingerprinting/figure/Regression_sdifferentiability_aperiodic_UPDRS.pdf', device = "pdf", width=5, height=5, dpi=800)
+
+
+# moca interaction 
+
+data$moca_bin= data$moca2 > 24
+data4reg=data[data$Group=='Parkinson',]
+data4reg=data4reg[!is.na(data4reg$HLU),]
+data4reg=data4reg[!is.na(data4reg$updrs2),]
+data4reg=data4reg[!is.na(data4reg$moca_bin),]
+data4reg=data4reg[!is.na(data4reg$DiseaseDur),]
+
+
+lm0=lm(identifiability_aperiodic ~ 1, data4reg)
+lm1=lm(identifiability_aperiodic ~ Age + Education_coded + DiseaseDur+ HLU + FOOOF_fit, data4reg)
+lm2=lm(identifiability_aperiodic ~ Age + Education_coded + DiseaseDur+ HLU+ FOOOF_fit+  updrs2, data4reg)
+lm3=lm(identifiability_aperiodic ~ Age + Education_coded + DiseaseDur+ HLU+  FOOOF_fit+ updrs2+ moca_bin, data4reg)
+lm4=lm(identifiability_aperiodic ~ Age + Education_coded + DiseaseDur+ HLU+ FOOOF_fit+ updrs2+ moca_bin + updrs2*moca_bin, data4reg)
+
+anova(lm0,lm1,lm2,lm3,lm4)
+summary(lm4)
+sjPlot::tab_model(lm4)
+
+bf= generalTestBF(identifiability_aperiodic ~ Age + Education_coded + DiseaseDur+ HLU+ FOOOF_fit+ updrs2+ moca_bin + updrs2*moca_bin, data4reg, whichModels = "top")
+summary(bf)
+
+
+lmtemp1=lm(identifiability_aperiodic ~ Age + Education_coded + DiseaseDur+ HLU + FOOOF_fit , data4reg)
+lmtemp2=lm(updrs2 ~ Age + Education_coded + DiseaseDur+ HLU + FOOOF_fit , data4reg)
+resid2plot= data.frame(identifiability= lmtemp1$residuals, updrs = lmtemp2$residuals, moca_bin= data4reg$moca_bin )
+
+ggplot(resid2plot, aes(x=updrs , y = identifiability, fill=moca_bin)) + 
+  geom_jitter(aes(fill=moca_bin, colour = moca_bin)) + 
+  stat_smooth(method = "lm", colour = 'black',fullrange = T) +
+  labs(title = paste("Adj R2 = ", signif(summary(lm4)$adj.r.squared, 5),
+                     "Intercept =", signif(lm4$coef[[1]],5 ),
+                     " Slope =", signif(lm4$coef[[8]], 5),
+                     " P =", signif(summary(lm4)$coef[8,4], 5) )) + scale_color_manual(values=cbbPalette[c(4,6)]) + scale_fill_manual(values=cbbPalette[c(4,6)])  + theme_classic2() +   xlab("UPDRS residuals") + ylab("differentiability residuals")+
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14,face="bold")) 
+
+ggsave('~/Documents/PD_fingerprinting/figure/Regression_self_id_UPDRS_moca_interaction_aperiodic.pdf', device = "pdf", width=5, height=5, dpi=800)
+
+
+
+```
+
+The periodic identifiability score almost replicates previous results, with a trending effect
+Seems like it captures most everything but misses out on something 
+
+```{r DONE aperiodic corrected differentiability}
+
+
+# read data and compute data for demographic table
+data=read.csv('~/Documents/PD_fingerprinting/QPN_demo_compiled.csv', stringsAsFactors = FALSE)
+
+PD_validation_R2 = read.csv('~/Documents/Alex_fingerprinting/PD_validation_R2.csv', na.strings = 'NaN', stringsAsFactors = FALSE, header = FALSE)
+
+PD_training_R2 = read.csv('~/Documents/Alex_fingerprinting/PD_training_R2.csv', na.strings = 'NaN', stringsAsFactors = FALSE, header = FALSE)
+
+HC_validation_R2 = read.csv('~/Documents/Alex_fingerprinting/HC_validation_R2.csv', na.strings = 'NaN', stringsAsFactors = FALSE, header = FALSE)
+
+HC_training_R2 = read.csv('~/Documents/Alex_fingerprinting/HC_training_R2.csv', na.strings = 'NaN', stringsAsFactors = FALSE, header = FALSE)
+
+HC_R2= rowMeans(data.frame(colMeans(HC_training_R2), colMeans(HC_validation_R2)))
+
+PD_R2= rowMeans(data.frame(colMeans(PD_training_R2), colMeans(PD_validation_R2)))
+
+fit=c(HC_R2, PD_R2)
+
+data2=read.csv('/Users/jason/Documents/Alex_fingerprinting/auto_cross_corrs.csv')
+
+fit=fit[data2$recording_length >50]
+data$FOOOF_fit= fit
+
+
+data$HLU= as.numeric(data$HLU)
+data$EOG= as.numeric(data$EOG)
+data$ECG= as.numeric(data$ECG)
+data4reg=data[data$Group=='Parkinson',]
+data4reg=data4reg[!is.na(data4reg$HLU),]
+data4reg=data4reg[!is.na(data4reg$moca2),]
+data4reg=data4reg[!is.na(data4reg$updrs2),]
+data4reg=data4reg[!is.na(data4reg$DiseaseDur),]
+data4reg=data4reg[!is.na(data4reg$Age),]
+data4reg=data4reg[!is.na(data4reg$Education_coded),]
+
+lm3=lm(identifiability_aperiodiccorrect ~ identifiability, data4reg)
+summary(lm3)
+
+ggplot(data4reg, aes(x=identifiability , y = identifiability_aperiodiccorrect, fill=cbbPalette[4])) + 
+  geom_jitter(colour = cbbPalette[4]) + 
+  stat_smooth(method = "lm", colour = 'black',fullrange = T) +
+  labs(title = paste("Adj R2 = ", signif(summary(lm3)$adj.r.squared, 5),
+                     "Intercept =", signif(lm3$coef[[1]],5 ),
+                     " Slope =", signif(lm3$coef[[2]], 5),
+                     " P =", signif(summary(lm3)$coef[2,4], 5) )) + scale_fill_manual(values=cbbPalette[4])  + theme_classic2() +   xlab("differentiability ") + ylab("differentiability corrected spectrum")+
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14,face="bold"), legend.position = "none") 
+
+ggsave('~/Documents/PD_fingerprinting/figure/Regression_differentiability_fullband_and_corr_spect.pdf', device = "pdf", width=5, height=5, dpi=800)
+
+
+lm0=lm(identifiability_aperiodiccorrect ~ 1, data4reg) 
+lm1=lm(identifiability_aperiodiccorrect ~ Age + Education_coded + DiseaseDur + HLU, data4reg)
+lm3=lm(identifiability_aperiodiccorrect ~ Age + Education_coded+ DiseaseDur + HLU + updrs2, data4reg)
+lm4=lm(identifiability_aperiodiccorrect ~ Age + Education_coded+ DiseaseDur + HLU + updrs2 + FOOOF_fit, data4reg)
+
+anova(lm0,lm1,lm3, lm4)
+summary(lm4)
+sjPlot::tab_model(lm4)
+
+bf = regressionBF(identifiability_aperiodiccorrect ~ Age + Education_coded+ DiseaseDur + HLU + updrs2 + FOOOF_fit, data4reg, whichModels = "top")
+
+summary(bf)
+
+
+lmtemp1=lm(identifiability_aperiodiccorrect ~ Age + Education_coded + DiseaseDur+ HLU + FOOOF_fit, data4reg)
+lmtemp2=lm(updrs2 ~ Age + Education_coded + DiseaseDur+ HLU + FOOOF_fit, data4reg)
+resid2plot= data.frame(identifiability= lmtemp1$residuals, updrs = lmtemp2$residuals )
+
+
+ggplot(resid2plot, aes(x=updrs , y = identifiability, fill=cbbPalette[5])) + 
+  geom_jitter(colour = cbbPalette[5]) + 
+  stat_smooth(method = "lm", colour = 'black',fullrange = T) +
+  labs(title = paste("Adj R2 = ", signif(summary(lm4)$adj.r.squared, 5),
+                     "Intercept =", signif(lm4$coef[[1]],5 ),
+                     " Slope =", signif(lm4$coef[[6]], 5),
+                     " P =", signif(summary(lm4)$coef[6,4], 5) )) + scale_fill_manual(values=cbbPalette[5])  + theme_classic2() +   xlab("UPDRS residuals") + ylab("differentiability corrected spectrum residuals")+
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14,face="bold"), legend.position = "none") 
+
+ggsave('~/Documents/PD_fingerprinting/figure/Regression_differentiability_correct_spectrum_UPDRS.pdf', device = "pdf", width=5, height=5, dpi=800)
+
+
+
+# moca interaction 
+
+data$moca_bin= data$moca2 > 24
+data4reg=data[data$Group=='Parkinson',]
+data4reg=data4reg[!is.na(data4reg$HLU),]
+data4reg=data4reg[!is.na(data4reg$updrs2),]
+data4reg=data4reg[!is.na(data4reg$moca_bin),]
+data4reg=data4reg[!is.na(data4reg$DiseaseDur),]
+
+
+lm0=lm(identifiability_aperiodiccorrect ~ 1, data4reg)
+lm1=lm(identifiability_aperiodiccorrect ~ Age + Education_coded + DiseaseDur+ HLU + FOOOF_fit, data4reg)
+lm2=lm(identifiability_aperiodiccorrect ~ Age + Education_coded + DiseaseDur+ HLU+ FOOOF_fit+  updrs2, data4reg)
+lm3=lm(identifiability_aperiodiccorrect ~ Age + Education_coded + DiseaseDur+ HLU+  FOOOF_fit+ updrs2+ moca_bin, data4reg)
+lm4=lm(identifiability_aperiodiccorrect ~ Age + Education_coded + DiseaseDur+ HLU+ FOOOF_fit+ updrs2+ moca_bin + updrs2*moca_bin, data4reg)
+
+anova(lm0,lm1,lm2,lm3,lm4)
+summary(lm4)
+sjPlot::tab_model(lm4)
+
+bf= generalTestBF(identifiability_aperiodiccorrect ~ Age + Education_coded + DiseaseDur+ HLU+ FOOOF_fit+ updrs2+ moca_bin + updrs2*moca_bin, data4reg, whichModels = "top")
+summary(bf)
+
+
+lmtemp1=lm(identifiability_aperiodiccorrect ~ Age + Education_coded + DiseaseDur+ HLU + FOOOF_fit , data4reg)
+lmtemp2=lm(updrs2 ~ Age + Education_coded + DiseaseDur+ HLU + FOOOF_fit , data4reg)
+resid2plot= data.frame(identifiability= lmtemp1$residuals, updrs = lmtemp2$residuals, moca_bin= data4reg$moca_bin )
+
+ggplot(resid2plot, aes(x=updrs , y = identifiability, fill=moca_bin)) + 
+  geom_jitter(aes(fill=moca_bin, colour = moca_bin)) + 
+  stat_smooth(method = "lm", colour = 'black',fullrange = T) +
+  labs(title = paste("Adj R2 = ", signif(summary(lm4)$adj.r.squared, 5),
+                     "Intercept =", signif(lm4$coef[[1]],5 ),
+                     " Slope =", signif(lm4$coef[[8]], 5),
+                     " P =", signif(summary(lm4)$coef[8,4], 5) )) + scale_color_manual(values=cbbPalette[c(4,6)]) + scale_fill_manual(values=cbbPalette[c(4,6)])  + theme_classic2() +   xlab("UPDRS residuals") + ylab("differentiability residuals")+
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14,face="bold")) 
+
+ggsave('~/Documents/PD_fingerprinting/figure/Regression_self_id_UPDRS_moca_interaction_aperiodic_corrected.pdf', device = "pdf", width=5, height=5, dpi=800)
+
+
+
+```
+
+
+
+
+
+```{r DONE Delta AIC for aperiodic and aperiodic corrected}
+
+# read data and compute data for demographic table
+data=read.csv('~/Documents/PD_fingerprinting/QPN_demo_compiled.csv', stringsAsFactors = FALSE)
+
+
+self_id_roi = read.csv('~/Documents/PD_fingerprinting/new_analysis_Nov2022/AIC_ROI_differentiability_aperiodic.csv', header = FALSE)
+self_id_roi= self_id_roi[-1,-1]
+self_id_roi=as.data.frame(t(self_id_roi))
+self_id_roi = cbind(data, self_id_roi)
+
+
+data4reg=self_id_roi[self_id_roi$Group=='Parkinson',]
+data4reg=data4reg[!is.na(data4reg$HLU),]
+data4reg=data4reg[!is.na(data4reg$updrs2),]
+data4reg=data4reg[!is.na(data4reg$moca2),]
+data4reg=data4reg[!is.na(data4reg$DiseaseDur),]
+
+
+lm2=lm(updrs2 ~ Age + Education_coded +   DiseaseDur+ HLU+ identifiability, data4reg)
+sjPlot::tab_model(lm2)
+
+coef_AIC= matrix(, nrow = 68, ncol = 6)
+AIC= matrix(, nrow = 68, ncol = 1)
+AIC_lm2 = vector(mode = "list", length = 68)
+
+for (i in 1:68){
+  
+  lm_temp=lm(updrs2 ~ Age + Education_coded +   DiseaseDur+ HLU+ data4reg[,i+26], data4reg)
+  AIC_lm2[i]=lm_temp
+  tab=summary(lm_temp)
+  coef_AIC[i,]=tab$coefficients[,1]
+  AIC[i,1]=AIC(lm_temp)
+  
+}
+
+AIC(lm2) - AIC
+
+
+df=read.csv('~/Documents/Alex_fingerprinting/PSD_ICC_orig_PD_new_PKD2.csv', header = FALSE, stringsAsFactors = FALSE)
+colnames(df)[1]='region'
+df=df[,1:2]
+df$hemi =''
+df$hemi[seq(2,68,2)] ='right'
+df$hemi[seq(1,67,2)] ='left'
+df$ACC= abs(AIC(lm2) - AIC)
+
+
+someData2= df
+colnames(someData2)[2]='Fingerprinting accuracy'
+colnames(someData2)[1]='region'
+colnames(someData2)[3]='hemi'
+
+ggplot(someData2) +
+  geom_brain(atlas = dk, 
+             position = position_brain(hemi ~ side),
+             aes(fill = `ACC`)) +
+  #scale_fill_distiller(palette = "RdBu"
+  #                     , limits = c(0.4, 0.9))+
+  viridis::scale_fill_viridis(option = 'magma', limits=c(2, 7 ))+
+  #scale_fill_gradient2(low="white", mid="#EC352F", high="#6C1917", 
+  #                     midpoint=0.6,   
+  #                     limits=c(0.4, 0.9 ))+
+  theme_void() 
+
+ggsave('~/Documents/PD_fingerprinting/ICC_output/ROI_AIC_PD_aperiodic.pdf', device = "pdf")
+
+
+
+# read data and compute data for demographic table
+data=read.csv('~/Documents/PD_fingerprinting/QPN_demo_compiled.csv', stringsAsFactors = FALSE)
+
+
+self_id_roi = read.csv('~/Documents/PD_fingerprinting/new_analysis_Nov2022/AIC_ROI_differentiability_aperiodic_corrected.csv', header = FALSE)
+self_id_roi= self_id_roi[-1,-1]
+self_id_roi=as.data.frame(t(self_id_roi))
+self_id_roi = cbind(data, self_id_roi)
+
+
+data4reg=self_id_roi[self_id_roi$Group=='Parkinson',]
+data4reg=data4reg[!is.na(data4reg$HLU),]
+data4reg=data4reg[!is.na(data4reg$updrs2),]
+data4reg=data4reg[!is.na(data4reg$moca2),]
+data4reg=data4reg[!is.na(data4reg$DiseaseDur),]
+
+
+lm2=lm(updrs2 ~ Age + Education_coded +   DiseaseDur+ HLU+ identifiability, data4reg)
+sjPlot::tab_model(lm2)
+
+coef_AIC= matrix(, nrow = 68, ncol = 6)
+AIC= matrix(, nrow = 68, ncol = 1)
+AIC_lm2 = vector(mode = "list", length = 68)
+
+for (i in 1:68){
+  
+  lm_temp=lm(updrs2 ~ Age + Education_coded +   DiseaseDur+ HLU+ data4reg[,i+26], data4reg)
+  AIC_lm2[i]=lm_temp
+  tab=summary(lm_temp)
+  coef_AIC[i,]=tab$coefficients[,1]
+  AIC[i,1]=AIC(lm_temp)
+  
+}
+
+AIC(lm2) - AIC
+
+
+df=read.csv('~/Documents/Alex_fingerprinting/PSD_ICC_orig_PD_new_PKD2.csv', header = FALSE, stringsAsFactors = FALSE)
+colnames(df)[1]='region'
+df=df[,1:2]
+df$hemi =''
+df$hemi[seq(2,68,2)] ='right'
+df$hemi[seq(1,67,2)] ='left'
+df$ACC= abs(AIC(lm2) - AIC)
+
+
+someData2= df
+colnames(someData2)[2]='Fingerprinting accuracy'
+colnames(someData2)[1]='region'
+colnames(someData2)[3]='hemi'
+
+ggplot(someData2) +
+  geom_brain(atlas = dk, 
+             position = position_brain(hemi ~ side),
+             aes(fill = `ACC`)) +
+  #scale_fill_distiller(palette = "RdBu"
+  #                     , limits = c(0.4, 0.9))+
+  viridis::scale_fill_viridis(option = 'magma', limits=c(2, 6 ))+
+  #scale_fill_gradient2(low="white", mid="#EC352F", high="#6C1917", 
+  #                     midpoint=0.6,   
+  #                     limits=c(0.4, 0.9 ))+
+  theme_void() 
+
+ggsave('~/Documents/PD_fingerprinting/ICC_output/ROI_AIC_PD_aperiodic_corr.pdf', device = "pdf")
+
+
+
+
+```
+
+
+
+Plot ICC results from fingerprinting over atlas
+
+```{r DONE Intraclass correlations}
+
+
+someData <- tibble(
+  region = rep(c("transverse temporal", "insula",
+                 "precentral","superior parietal"), 2), 
+  p = sample(seq(0.5,1,.01), 8),
+  groups = c(rep("g1", 4), rep("g2", 4))
+)
+
+df=read.csv('~/Documents/PD_fingerprinting/new_analysis_Nov2022/Nov_2022_ICC_PD_cohort.csv', header = FALSE, stringsAsFactors = FALSE)
+colnames(df)[1]='region'
+df$hemi =''
+df$hemi[seq(2,68,2)] ='right' 
+df$hemi[seq(1,67,2)] ='left'
+
+# Parkinsons
+someData= tibble(df$region, rowMeans(df[,152:452]), df$hemi)
+colnames(someData)[2]='ICC'
+colnames(someData)[1]='region'
+colnames(someData)[3]='hemi'
+someData$ICC[someData$ICC<0.4]=0.4
+someData$ICC[someData$ICC>0.9]=0.9
+someData$band= 'High gamma'
+someData2= tibble(df$region, rowMeans(df[,92:151]), df$hemi)
+colnames(someData2)[2]='ICC'
+colnames(someData2)[1]='region'
+colnames(someData2)[3]='hemi'
+someData2$ICC[someData2$ICC<0.4]=0.4
+someData2$ICC[someData2$ICC>0.9]=0.9
+someData2$band= 'Gamma'
+someData=rbind(someData,someData2)
+someData2= tibble(df$region, rowMeans(df[,41:91]), df$hemi)
+colnames(someData2)[2]='ICC'
+colnames(someData2)[1]='region'
+colnames(someData2)[3]='hemi'
+someData2$ICC[someData2$ICC<0.4]=0.4
+someData2$ICC[someData2$ICC>0.9]=0.9
+someData2$band= 'Beta'
+someData=rbind(someData,someData2)
+someData2= tibble(df$region, rowMeans(df[,26:40]), df$hemi)
+colnames(someData2)[2]='ICC'
+colnames(someData2)[1]='region'
+colnames(someData2)[3]='hemi'
+someData2$ICC[someData2$ICC<0.4]=0.4
+someData2$ICC[someData2$ICC>0.9]=0.9
+someData2$band= 'Alpha'
+someData=rbind(someData,someData2)
+someData2= tibble(df$region, rowMeans(df[,14:26]), df$hemi)
+colnames(someData2)[2]='ICC'
+colnames(someData2)[1]='region'
+colnames(someData2)[3]='hemi'
+someData2$ICC[someData2$ICC<0.4]=0.4
+someData2$ICC[someData2$ICC>0.9]=0.9
+someData2$band= 'Theta'
+someData=rbind(someData,someData2)
+someData2= tibble(df$region, rowMeans(df[,2:13]), df$hemi)
+colnames(someData2)[2]='ICC'
+colnames(someData2)[1]='region'
+colnames(someData2)[3]='hemi'
+someData2$ICC[someData2$ICC<0.4]=0.4
+someData2$ICC[someData2$ICC>0.9]=0.9
+someData2$band= 'Delta'
+someData=rbind(someData,someData2)
+
+someData$band= ordered(someData$band, levels= c("Delta", "Theta", "Alpha", "Beta", "Gamma", "High gamma"))
+someData= someData[!is.na(someData$band),]
+ggplot(someData) +
+  geom_brain(atlas = dk, 
+             position = position_brain(hemi ~ side),
+             aes(fill = ICC)) + viridis::scale_fill_viridis(option = 'magma',limits=c(0.4, 1 ))+ theme_void() + facet_wrap(~band)
+
+ggsave('~/Documents/PD_fingerprinting/ICC_output/ICC_fullbands_PD_new.pdf', device = "pdf")
+
+
+
+#### Health controls
+df=read.csv('~/Documents/PD_fingerprinting/new_analysis_Nov2022/Nov_2022_ICC_control_cohort.csv', header = FALSE, stringsAsFactors = FALSE)
+colnames(df)[1]='region'
+df$hemi =''
+df$hemi[seq(2,68,2)] ='right'
+df$hemi[seq(1,67,2)] ='left'
+
+# fullband
+someData= tibble(df$region, rowMeans(df[,152:452]), df$hemi)
+colnames(someData)[2]='ICC'
+colnames(someData)[1]='region'
+colnames(someData)[3]='hemi'
+someData$ICC[someData$ICC<0.4]=0.4
+someData$ICC[someData$ICC>0.9]=0.9
+someData$band= 'High gamma'
+someData2= tibble(df$region, rowMeans(df[,92:151]), df$hemi)
+colnames(someData2)[2]='ICC'
+colnames(someData2)[1]='region'
+colnames(someData2)[3]='hemi'
+someData2$ICC[someData2$ICC<0.4]=0.4
+someData2$ICC[someData2$ICC>0.9]=0.9
+someData2$band= 'Gamma'
+someData=rbind(someData,someData2)
+someData2= tibble(df$region, rowMeans(df[,41:91]), df$hemi)
+colnames(someData2)[2]='ICC'
+colnames(someData2)[1]='region'
+colnames(someData2)[3]='hemi'
+someData2$ICC[someData2$ICC<0.4]=0.4
+someData2$ICC[someData2$ICC>0.9]=0.9
+someData2$band= 'Beta'
+someData=rbind(someData,someData2)
+someData2= tibble(df$region, rowMeans(df[,26:40]), df$hemi)
+colnames(someData2)[2]='ICC'
+colnames(someData2)[1]='region'
+colnames(someData2)[3]='hemi'
+someData2$ICC[someData2$ICC<0.4]=0.4
+someData2$ICC[someData2$ICC>0.9]=0.9
+someData2$band= 'Alpha'
+someData=rbind(someData,someData2)
+someData2= tibble(df$region, rowMeans(df[,14:26]), df$hemi)
+colnames(someData2)[2]='ICC'
+colnames(someData2)[1]='region'
+colnames(someData2)[3]='hemi'
+someData2$ICC[someData2$ICC<0.4]=0.4
+someData2$ICC[someData2$ICC>0.9]=0.9
+someData2$band= 'Theta'
+someData=rbind(someData,someData2)
+someData2= tibble(df$region, rowMeans(df[,2:13]), df$hemi)
+colnames(someData2)[2]='ICC'
+colnames(someData2)[1]='region'
+colnames(someData2)[3]='hemi'
+someData2$ICC[someData2$ICC<0.4]=0.4
+someData2$ICC[someData2$ICC>0.9]=0.9
+someData2$band= 'Delta'
+someData=rbind(someData,someData2)
+
+someData$band= ordered(someData$band, levels= c("Delta", "Theta", "Alpha", "Beta", "Gamma", "High gamma"))
+someData= someData[!is.na(someData$band),]
+ggplot(someData) +
+  geom_brain(atlas = dk, 
+             position = position_brain(hemi ~ side),
+             aes(fill = ICC)) +
+  viridis::scale_fill_viridis(option = 'magma',limits=c(0.4, 1 ))+
+  theme_void() + facet_wrap(~band)
+
+ggsave('~/Documents/PD_fingerprinting/ICC_output/ICC_fullbands_CTL_new.pdf', device = "pdf")
+
+
+#### diff in ICC between PD and CTLS
+df=read.csv('~/Documents/PD_fingerprinting/new_analysis_Nov2022/Nov_2022_ICC_control_cohort.csv', header = FALSE, stringsAsFactors = FALSE)
+df2=read.csv('~/Documents/PD_fingerprinting/new_analysis_Nov2022/Nov_2022_ICC_PD_cohort.csv', header = FALSE, stringsAsFactors = FALSE)
+df[,2:452]=df2[,2:452]-df[,2:452]
+colnames(df)[1]='region'
+df$hemi =''
+df$hemi[seq(2,68,2)] ='right'
+df$hemi[seq(1,67,2)] ='left'
+
+# fullband
+someData= tibble(df$region, rowMeans(df[,152:452]), df$hemi)
+colnames(someData)[2]='ICC'
+colnames(someData)[1]='region'
+colnames(someData)[3]='hemi'
+someData$ICC[someData$ICC< -0.5]=-0.5
+someData$ICC[someData$ICC>0.5]=0.5
+someData$band= 'High gamma'
+someData2= tibble(df$region, rowMeans(df[,92:151]), df$hemi)
+colnames(someData2)[2]='ICC'
+colnames(someData2)[1]='region'
+colnames(someData2)[3]='hemi'
+someData2$ICC[someData2$ICC< -0.5]=-0.5
+someData2$ICC[someData2$ICC>0.5]=0.5
+someData2$band= 'Gamma'
+someData=rbind(someData,someData2)
+someData2= tibble(df$region, rowMeans(df[,41:91]), df$hemi)
+colnames(someData2)[2]='ICC'
+colnames(someData2)[1]='region'
+colnames(someData2)[3]='hemi'
+someData2$ICC[someData2$ICC< -0.5]=-0.5
+someData2$ICC[someData2$ICC>0.5]=0.5
+someData2$band= 'Beta'
+someData=rbind(someData,someData2)
+someData2= tibble(df$region, rowMeans(df[,26:40]), df$hemi)
+colnames(someData2)[2]='ICC'
+colnames(someData2)[1]='region'
+colnames(someData2)[3]='hemi'
+someData2$ICC[someData2$ICC< -0.5]=-0.5
+someData2$ICC[someData2$ICC>0.5]=0.5
+someData2$band= 'Alpha'
+someData=rbind(someData,someData2)
+someData2= tibble(df$region, rowMeans(df[,14:26]), df$hemi)
+colnames(someData2)[2]='ICC'
+colnames(someData2)[1]='region'
+colnames(someData2)[3]='hemi'
+someData2$ICC[someData2$ICC< -0.5]=-0.5
+someData2$ICC[someData2$ICC>0.5]=0.5
+someData2$band= 'Theta'
+someData=rbind(someData,someData2)
+someData2= tibble(df$region, rowMeans(df[,2:13]), df$hemi)
+colnames(someData2)[2]='ICC'
+colnames(someData2)[1]='region'
+colnames(someData2)[3]='hemi'
+someData2$ICC[someData2$ICC< -0.5]=-0.5
+someData2$ICC[someData2$ICC>0.5]=0.5
+someData2$band= 'Delta'
+someData=rbind(someData,someData2)
+
+someData$band= ordered(someData$band, levels= c("Delta", "Theta", "Alpha", "Beta", "Gamma", "High gamma"))
+someData= someData[!is.na(someData$band),]
+ggplot(someData) +
+  geom_brain(atlas = dk, 
+             position = position_brain(hemi ~ side),
+             aes(fill = ICC)) +
+  #viridis::scale_fill_viridis(option = 'magma',limits=c(-0.5, 0.5 ))+
+    scale_fill_gradient2(low = "#67309A", mid = "#FCF7F4", high = "#EC7A48", midpoint = 0.0, limits=c(-0.5, 0.5 )) +
+  theme_void() + facet_wrap(~band)
+
+ggsave('~/Documents/PD_fingerprinting/ICC_output/ICC_fullbands_PD_minus_CTL_new.pdf', device = "pdf")
+
+
+
+#### diff in ICC between PD and CTLS
+df=read.csv('~/Documents/PD_fingerprinting/new_analysis_Nov2022/Nov_2022_ICC_control_cohort.csv', header = FALSE, stringsAsFactors = FALSE)
+df2=read.csv('~/Documents/PD_fingerprinting/new_analysis_Nov2022/Nov_2022_ICC_PD_cohort.csv', header = FALSE, stringsAsFactors = FALSE)
+df[,2:452]=df2[,2:452]-df[,2:452]
+colnames(df)[1]='region'
+df$hemi =''
+df$hemi[seq(2,68,2)] ='right'
+df$hemi[seq(1,67,2)] ='left'
+
+# fullband
+someData3= tibble(df$region, rowMeans(df[,2:452]), df$hemi)
+colnames(someData3)= c('region', 'ICC', 'hemi')
+
+someData3= someData3[!is.na(someData3$region),]
+ggplot(someData3) +
+  geom_brain(atlas = dk, 
+             position = position_brain(hemi ~ side),
+             aes(fill = ICC)) +
+  #viridis::scale_fill_viridis(option = 'magma',limits=c(-0.5, 0.5 ))+
+    scale_fill_gradient2(low = "#67309A", mid = "#FCF7F4", high = "#EC7A48", midpoint = 0.0, limits=c(-0.5, 0.5 )) +
+  theme_void() 
+
+ggsave('~/Documents/PD_fingerprinting/ICC_output/ICC_broadband_change_average_PD_minus_CTL_new.pdf', device = "pdf")
+
+
+
+#### diff in ICC between PD and CTLS
+df=read.csv('~/Documents/PD_fingerprinting/new_analysis_Nov2022/Nov_2022_ICC_control_cohort.csv', header = FALSE, stringsAsFactors = FALSE)
+df2=read.csv('~/Documents/PD_fingerprinting/new_analysis_Nov2022/Nov_2022_ICC_PD_cohort.csv', header = FALSE, stringsAsFactors = FALSE)
+df2[,2:452]=df2[,2:452]-df[,2:452]
+df2=df2[,-1]
+# Define X and Y data
+X=data.frame(delta= rowMeans(df2[,1:12]),theta= rowMeans(df2[,13:25]),alpha= rowMeans(df2[,25:39]),beta= rowMeans(df2[,40:90]), gamma= rowMeans(df2[,91:150]), hgamma= rowMeans(df2[,151:451]))
+
+x2=rowMeans(X)
+
+#### diff in ICC between PD and CTLS
+df=read.csv('~/Documents/PD_fingerprinting/new_analysis_Nov2022/Nov_2022_ICC_control_cohort.csv', header = FALSE, stringsAsFactors = FALSE)
+df2=read.csv('~/Documents/PD_fingerprinting/new_analysis_Nov2022/Nov_2022_ICC_PD_cohort.csv', header = FALSE, stringsAsFactors = FALSE)
+df[,2:452]=df2[,2:452]-df[,2:452]
+colnames(df)[1]='region'
+df$hemi =''
+df$hemi[seq(2,68,2)] ='right'
+df$hemi[seq(1,67,2)] ='left'
+
+# fullband
+someData3= tidyr::tibble(df$region, x2, df$hemi)
+colnames(someData3)= c('region', 'ICC', 'hemi')
+
+someData3$ICC[someData3$ICC >0.5] =0.5
+someData3$ICC[someData3$ICC < -0.5] = -0.5
+
+someData3= someData3[!is.na(someData3$region),]
+ggplot(someData3) +
+  geom_brain(atlas = dk, 
+             position = position_brain(hemi ~ side),
+             aes(fill = ICC)) +
+  #viridis::scale_fill_viridis(option = 'magma',limits=c(-0.5, 0.5 ))+
+    scale_fill_gradient2(low = "#67309A", mid = "#FCF7F4", high = "#EC7A48", midpoint = 0.0, limits=c(-0.5, 0.5 )) +
+  theme_void() 
+
+ggsave('~/Documents/PD_fingerprinting/ICC_output/ICC_broadband_change_new_AVG_PD_minus_CTL_new.pdf', device = "pdf")
+
+
+
+
+
+#### diff in ICC between PD and CTLS
+df=read.csv('~/Documents/PD_fingerprinting/new_analysis_Nov2022/Nov_2022_ICC_control_cohort.csv', header = FALSE, stringsAsFactors = FALSE)
+df=df[,-1]
+# Define X and Y data
+X=data.frame(delta= rowMeans(df[,1:12]),theta= rowMeans(df[,13:25]),alpha= rowMeans(df[,25:39]),beta= rowMeans(df[,40:90]), gamma= rowMeans(df[,91:150]), hgamma= rowMeans(df[,151:451]))
+
+x2=rowMeans(X)
+
+#### diff in ICC between PD and CTLS
+df=read.csv('~/Documents/PD_fingerprinting/new_analysis_Nov2022/Nov_2022_ICC_control_cohort.csv', header = FALSE, stringsAsFactors = FALSE)
+colnames(df)[1]='region'
+df$hemi =''
+df$hemi[seq(2,68,2)] ='right'
+df$hemi[seq(1,67,2)] ='left'
+
+# fullband
+someData3= tidyr::tibble(df$region, x2, df$hemi)
+colnames(someData3)= c('region', 'ICC', 'hemi')
+
+someData3$ICC[someData3$ICC<0.4]=0.4
+someData3$ICC[someData3$ICC>0.9]=0.9
+
+someData3= someData3[!is.na(someData3$region),]
+ggplot(someData3) +
+  geom_brain(atlas = dk, 
+             position = position_brain(hemi ~ side),
+             aes(fill = ICC)) +
+  viridis::scale_fill_viridis(option = 'magma',limits=c(0.4, 1 ))+
+  theme_void() 
+
+ggsave('~/Documents/PD_fingerprinting/ICC_output/ICC_broadband_CTL_new.pdf', device = "pdf")
+
+
+
+#### diff in ICC between PD and CTLS
+df=read.csv('~/Documents/PD_fingerprinting/new_analysis_Nov2022/Nov_2022_ICC_PD_cohort.csv', header = FALSE, stringsAsFactors = FALSE)
+df=df[,-1]
+# Define X and Y data
+X=data.frame(delta= rowMeans(df[,1:12]),theta= rowMeans(df[,13:25]),alpha= rowMeans(df[,25:39]),beta= rowMeans(df[,40:90]), gamma= rowMeans(df[,91:150]), hgamma= rowMeans(df[,151:451]))
+
+x2=rowMeans(X)
+
+#### diff in ICC between PD and CTLS
+df=read.csv('~/Documents/PD_fingerprinting/new_analysis_Nov2022/Nov_2022_ICC_PD_cohort.csv', header = FALSE, stringsAsFactors = FALSE)
+colnames(df)[1]='region'
+df$hemi =''
+df$hemi[seq(2,68,2)] ='right'
+df$hemi[seq(1,67,2)] ='left'
+
+# fullband
+someData3= tidyr::tibble(df$region, x2, df$hemi)
+colnames(someData3)= c('region', 'ICC', 'hemi')
+
+someData3$ICC[someData3$ICC<0.4]=0.4
+someData3$ICC[someData3$ICC>0.9]=0.9
+
+someData3= someData3[!is.na(someData3$region),]
+ggplot(someData3) +
+  geom_brain(atlas = dk, 
+             position = position_brain(hemi ~ side),
+             aes(fill = ICC)) +
+  viridis::scale_fill_viridis(option = 'magma',limits=c(0.4, 1 ))+
+  theme_void() 
+
+ggsave('~/Documents/PD_fingerprinting/ICC_output/ICC_broadband_PD_new.pdf', device = "pdf")
+
+
+
+```
+
+Now let us compare this to cortical thickness measures we see in PD
+
+```{r DONE ICC and cortical thickness}
+
+thicc=read.csv('~/Documents/PD_fingerprinting/Alex_cortical/thiccness_data.csv', stringsAsFactors = FALSE, na.strings = 0, header = FALSE)
+thicc_ids= read.csv('~/Documents/PD_fingerprinting/Alex_cortical/thiccness_ids.csv', stringsAsFactors = FALSE, na.strings = 0, header = FALSE)
+
+index= data$SubjID %in% thicc_ids$V1
+demo=data[index,]
+
+thicc=thicc[,thicc_ids$V1 %in% data$SubjID]
+thicc_ids=thicc_ids[thicc_ids$V1 %in% data$SubjID,]
+demo=demo[match(thicc_ids, demo$SubjID),]
+
+
+thicc_zcore= (thicc - rowMeans(thicc[,demo$Group=='Control']))/apply(thicc[,demo$Group=='Control'],1, sd, na.rm = TRUE)
+
+dka_thicc= rowMeans(thicc_zcore[,demo$Group=='Parkinson'])
+
+
+df=read.csv('~/Documents/PD_fingerprinting/new_analysis_Nov2022/Nov_2022_ICC_PD_cohort.csv', header = FALSE, stringsAsFactors = FALSE)
+df=df[,1:2]
+colnames(df)[1]='region'
+df$hemi =''
+df$hemi[seq(2,68,2)] ='right' 
+df$hemi[seq(1,67,2)] ='left'
+df$V2=dka_thicc
+
+someData2= df
+colnames(someData2)[2]='Cortical thickness'
+colnames(someData2)[1]='region'
+colnames(someData2)[3]='hemi'
+
+ggplot(someData2) +
+  geom_brain(atlas = dk, 
+             position = position_brain(hemi ~ side),
+             aes(fill = `Cortical thickness`)) +
+  #scale_fill_distiller(palette = "RdBu"
+  #                     , limits = c(0.4, 0.9))+
+  viridis::scale_fill_viridis(option = 'magma')+
+  #scale_fill_gradient2(low="white", mid="#EC352F", high="#6C1917", 
+  #                     midpoint=0.6,   
+  #                     limits=c(0.4, 0.9 ))+
+  theme_void() 
+
+ggsave('~/Documents/PD_fingerprinting/ICC_output/cortical_thiccness_PD_zscore_change.pdf', device = "pdf")
+
+
+dka_thicc= rowMeans(thicc[,demo$Group=='Control'])
+
+df=read.csv('~/Documents/PD_fingerprinting/new_analysis_Nov2022/Nov_2022_ICC_PD_cohort.csv', header = FALSE, stringsAsFactors = FALSE)
+df=df[,1:2]
+colnames(df)[1]='region'
+df$hemi =''
+df$hemi[seq(2,68,2)] ='right' 
+df$hemi[seq(1,67,2)] ='left'
+df$V2=dka_thicc
+
+
+someData2= df
+colnames(someData2)[2]='Cortical thickness'
+colnames(someData2)[1]='region'
+colnames(someData2)[3]='hemi'
+
+ggplot(someData2) +
+  geom_brain(atlas = dk, 
+             position = position_brain(hemi ~ side),
+             aes(fill = `Cortical thickness`)) +
+  #scale_fill_distiller(palette = "RdBu"
+  #                     , limits = c(0.4, 0.9))+
+  viridis::scale_fill_viridis(option = 'magma')+
+  #scale_fill_gradient2(low="white", mid="#EC352F", high="#6C1917", 
+  #                     midpoint=0.6,   
+  #                     limits=c(0.4, 0.9 ))+
+  theme_void() 
+
+ggsave('~/Documents/PD_fingerprinting/ICC_output/cortical_thiccness_control_avg.pdf', device = "pdf")
+
+
+dka_thicc= rowMeans(thicc[,demo$Group=='Parkinson'])
+
+df=read.csv('~/Documents/PD_fingerprinting/new_analysis_Nov2022/Nov_2022_ICC_PD_cohort.csv', header = FALSE, stringsAsFactors = FALSE)
+df=df[,1:2]
+colnames(df)[1]='region'
+df$hemi =''
+df$hemi[seq(2,68,2)] ='right' 
+df$hemi[seq(1,67,2)] ='left'
+df$V2=dka_thicc
+
+
+someData2= df
+colnames(someData2)[2]='Cortical thickness'
+colnames(someData2)[1]='region'
+colnames(someData2)[3]='hemi'
+
+ggplot(someData2) +
+  geom_brain(atlas = dk, 
+             position = position_brain(hemi ~ side),
+             aes(fill = `Cortical thickness`)) +
+  #scale_fill_distiller(palette = "RdBu"
+  #                     , limits = c(0.4, 0.9))+
+  viridis::scale_fill_viridis(option = 'magma')+
+  #scale_fill_gradient2(low="white", mid="#EC352F", high="#6C1917", 
+  #                     midpoint=0.6,   
+  #                     limits=c(0.4, 0.9 ))+
+  theme_void() 
+
+ggsave('~/Documents/PD_fingerprinting/ICC_output/cortical_thiccness_PD_avg.pdf', device = "pdf")
+
+
+# now check how change in cortical thickness relates to ICC and differentiability 
+#### diff in ICC between PD and CTLS
+df=read.csv('~/Documents/PD_fingerprinting/new_analysis_Nov2022/Nov_2022_ICC_control_cohort.csv', header = FALSE, stringsAsFactors = FALSE)
+df2=read.csv('~/Documents/PD_fingerprinting/new_analysis_Nov2022/Nov_2022_ICC_PD_cohort.csv', header = FALSE, stringsAsFactors = FALSE)
+df[,2:452]=df2[,2:452]-df[,2:452]
+colnames(df)[1]='region'
+df$hemi =''
+df$hemi[seq(2,68,2)] ='right'
+df$hemi[seq(1,67,2)] ='left'
+
+df2=df[,-1]
+# Define X and Y data
+X=data.frame(delta= rowMeans(df2[,1:12]),theta= rowMeans(df2[,13:25]),alpha= rowMeans(df2[,25:39]),beta= rowMeans(df2[,40:90]), gamma= rowMeans(df2[,91:150]), hgamma= rowMeans(df2[,151:451]))
+
+x2=rowMeans(X)
+
+someData= tidyr::tibble(df$region, x2, df$hemi)
+colnames(someData)[2]='ICC'
+colnames(someData)[1]='region'
+colnames(someData)[3]='hemi'
+
+
+ggplot(someData) +
+  geom_brain(atlas = dk, 
+             position = position_brain(hemi ~ side),
+             aes(fill = `ICC`)) +
+  #scale_fill_distiller(palette = "RdBu"
+  #                     , limits = c(0.4, 0.9))+
+  viridis::scale_fill_viridis(option = 'magma')+
+  #scale_fill_gradient2(low="white", mid="#EC352F", high="#6C1917", 
+  #                     midpoint=0.6,   
+  #                     limits=c(0.4, 0.9 ))+
+  theme_void() 
+
+ggsave('~/Documents/PD_fingerprinting/ICC_output/broadband_ICC_cortical_2023.pdf', device = "pdf")
+
+
+dka_thicc= rowMeans(thicc_zcore[,demo$Group=='Parkinson'])
+dka_thicc_no_z= rowMeans(thicc[,demo$Group=='Parkinson'])
+dka_thicc_CTL= rowMeans(thicc[,demo$Group=='Control'])
+
+cor.test(x2, dka_thicc)
+cor.test(x2, dka_thicc_no_z)
+cor.test(rowMeans(X), dka_thicc_CTL)
+
+# scatter plot
+someData_scatter= tidyr::tibble(df$region, rowMeans(df2[1:451]), dka_thicc)
+colnames(someData_scatter)[2]='ICC'
+colnames(someData_scatter)[1]='region'
+colnames(someData_scatter)[3]='Cortical thickness'
+
+lm3=lm(`Cortical thickness` ~ ICC +1, someData_scatter)
+summary(lm3)
+sjPlot::tab_model(lm3)
+
+ggplot(someData_scatter, aes(x=ICC , y = `Cortical thickness`, fill=cbbPalette[6])) + 
+  geom_jitter(colour = cbbPalette[6]) + 
+  stat_smooth(method = "lm", colour = 'black',fullrange = T) +
+  labs(title = paste("Adj R2 = ", signif(summary(lm3)$adj.r.squared, 5),
+                     "Intercept =", signif(lm3$coef[[1]],5 ),
+                     " Slope =", signif(lm3$coef[[2]], 5),
+                     " P =", signif(summary(lm3)$coef[2,4], 5) )) + scale_fill_manual(values=cbbPalette[6])  +
+  theme_classic2() +   xlab("ICC") + ylab("Cortical thickness")+
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14,face="bold"), legend.position = "none") 
+
+
+ggsave('~/Documents/PD_fingerprinting/figure/2023_Regression_cortical_thiccness_vs_ICC.pdf', device = "pdf", width=5, height=5, dpi=800)
+
+
+index= thicc_ids %in% data$SubjID 
+PD_thicc= colMeans(thicc_zcore[,index])
+demo$thiccness=PD_thicc
+
+demo_regress= demo[demo$Group=="Parkinson",]
+
+lm3=lm(thiccness ~ identifiability +1, demo_regress)
+summary(lm3)
+sjPlot::tab_model(lm3)
+
+ggplot(demo_regress, aes(x=identifiability , y = thiccness, fill=cbbPalette[6])) + 
+  geom_jitter(colour = cbbPalette[6]) + 
+  stat_smooth(method = "lm", colour = 'black',fullrange = T) +
+  labs(title = paste("Adj R2 = ", signif(summary(lm3)$adj.r.squared, 5),
+                     "Intercept =", signif(lm3$coef[[1]],5 ),
+                     " Slope =", signif(lm3$coef[[2]], 5),
+                     " P =", signif(summary(lm3)$coef[2,4], 5) )) + scale_fill_manual(values=cbbPalette[6])  +
+  theme_classic2() +   xlab("differentiability") + ylab("Cortical thickness")+
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14,face="bold"), legend.position = "none") 
+
+
+
+ggsave('~/Documents/PD_fingerprinting/figure/2023_Regression_cortical_thiccness_vs_self_id.pdf', device = "pdf", width=5, height=5, dpi=800)
+
+
+```
+
+
+
+
+
+```{r DONE SVM to predict HY }
+
+# read data and compute data for demographic table
+data=read.csv('~/Documents/PD_fingerprinting/QPN_demo_compiled.csv', stringsAsFactors = FALSE)
+
+target= read.csv('~/Documents/PD_fingerprinting/features_4_fingeprinting_target.csv' )
+
+database= read.csv('~/Documents/PD_fingerprinting/features_4_fingeprinting_database.csv' )
+
+target=target[,-1]
+database=database[,-1]
+
+predictions= c()
+
+for (j in 1:68){
+
+roi_index= (451*(j-1)+1):(451*(j-1)+451)
+
+target_LSP= target[,roi_index]
+database_LSP= database[,roi_index]
+target_LSP= (target_LSP+database_LSP)/2
+target_LSP=log(target_LSP)
+
+# We used various cross validation strategies
+# 80-20 (10 to train 3 to test)
+# 70-30 (9 to train and 4 to test)
+# 90-10 (12 to train and 1 to test)
+target_LSP=target_LSP[!is.na(data$Hoehn.and.Yahr.score),]
+data2=data[!is.na(data$Hoehn.and.Yahr.score),]
+data2$HoehnYarr_bin= data2$Hoehn.and.Yahr.score >1.5
+data2$HoehnYarr_bin = as.factor(data2$HoehnYarr_bin)
+data_HYpos= target_LSP[data2$Hoehn.and.Yahr.score >1.5,]
+data_HYneg= target_LSP[data2$Hoehn.and.Yahr.score <=1.5,]
+prediction=c()
+
+  for (i in 1:1000){
+
+      ids_pos=sample(nrow(data_HYpos),13)
+      ids_neg= sample(nrow(data_HYneg),13)
+
+      datatrain= rbind(data_HYpos[ids_pos[1:10],], data_HYneg[ids_neg[1:10],])
+      datatrain$HoehnYarr_bin= c(rep(1 ,10), rep(0,10))
+      datatrain$HoehnYarr_bin= as.factor(datatrain$HoehnYarr_bin)
+      datatest= rbind(data_HYpos[ids_pos[11:13],], data_HYneg[ids_neg[11:13],])
+      datatest$HoehnYarr_bin= c(rep(1,3), rep(0,3))
+      datatest$HoehnYarr_bin= as.factor(datatest$HoehnYarr_bin)
+
+      svm_model=e1071::svm(HoehnYarr_bin ~., data= datatrain, kernel = "linear", cost = 1)
+
+      pred <- predict(svm_model,datatest)
+      prediction[i]=sum(pred==datatest$HoehnYarr_bin)/6
+  }
+
+predictions= cbind(predictions,prediction)
+print(j)
+}
+
+predictions= as.data.frame(predictions)
+
+write.csv(predictions, '~/Documents/PD_fingerprinting/Results_from_SVM_class_of_HY_allROI2_new_data_80_20.csv')
+
+
+```
+
+
+
+``` {r DONE plot SVM topo and corr with ICC with SPINS}
+
+cbbPalette <- c( "#90319D","#E25987","#FFBF00","#3A3AA4", "#31CD71", "#F0792C", "#6C3ABF")
+
+SVM=read.csv( '~/Documents/PD_fingerprinting/Results_from_SVM_class_of_HY_allROI2_new_data_80_20.csv')
+SVM=SVM[,-1]
+
+df=read.csv('~/Documents/Alex_fingerprinting/PSD_ICC_orig_PD_new_PKD2.csv', header = FALSE, stringsAsFactors = FALSE)
+colnames(df)[1]='region'
+df=df[,1:2]
+df$hemi =''
+df$hemi[seq(2,68,2)] ='right'
+df$hemi[seq(1,67,2)] ='left'
+df$ACC=colMeans(SVM)
+
+
+someData2= df
+colnames(someData2)[2]='Fingerprinting accuracy'
+colnames(someData2)[1]='region'
+colnames(someData2)[3]='hemi'
+
+ggplot(someData2) +
+  geom_brain(atlas = dk, 
+             position = position_brain(hemi ~ side),
+             aes(fill = `ACC`)) +
+   scale_fill_gradient2(low = "#ECECEC", mid = "#ECECEC", high = "#E25987", midpoint = 0.50) +
+  #scale_fill_distiller(palette = "RdBu"
+  #                     , limits = c(0.4, 0.9))+
+  #viridis::scale_fill_viridis(option = 'magma')+
+  #scale_fill_gradient2(low="white", mid="#EC352F", high="#6C1917", 
+  #                     midpoint=0.6,   
+  #                     limits=c(0.4, 0.9 ))+
+  theme_void() 
+
+ggsave('~/Documents/PD_fingerprinting/ICC_output/2023_decode_HY_ROI_new_colour_70_30.pdf', device = "pdf")
+
+
+
+SVM=read.csv( '~/Documents/PD_fingerprinting/Results_from_SVM_class_of_HY_allROI2_new_data_80_20.csv')
+SVM=SVM[,-1]
+
+df=read.csv('~/Documents/Alex_fingerprinting/PSD_ICC_orig_PD_new_PKD2.csv', header = FALSE, stringsAsFactors = FALSE)
+colnames(df)[1]='region'
+df=df[,1:2]
+df$hemi =''
+df$hemi[seq(2,68,2)] ='right'
+df$hemi[seq(1,67,2)] ='left'
+df$ACC=colMeans(SVM)
+
+
+someData2= df
+colnames(someData2)[2]='Fingerprinting accuracy'
+colnames(someData2)[1]='region'
+colnames(someData2)[3]='hemi'
+
+ggplot(someData2) +
+  geom_brain(atlas = dk, 
+             position = position_brain(hemi ~ side),
+             aes(fill = `ACC`)) +
+   scale_fill_gradient2(low = "#ECECEC", mid = "#ECECEC", high = "#E25987", midpoint = 0.50) +
+  #scale_fill_distiller(palette = "RdBu"
+  #                     , limits = c(0.4, 0.9))+
+  #viridis::scale_fill_viridis(option = 'magma')+
+  #scale_fill_gradient2(low="white", mid="#EC352F", high="#6C1917", 
+  #                     midpoint=0.6,   
+  #                     limits=c(0.4, 0.9 ))+
+  theme_void() 
+
+ggsave('~/Documents/PD_fingerprinting/ICC_output/2023_decode_HY_ROI_new_colour_80_20.pdf', device = "pdf")
+
+
+SVM=read.csv( '~/Documents/PD_fingerprinting/Results_from_SVM_class_of_HY_allROI2_new_data_90_10.csv')
+SVM=SVM[,-1]
+
+df=read.csv('~/Documents/Alex_fingerprinting/PSD_ICC_orig_PD_new_PKD2.csv', header = FALSE, stringsAsFactors = FALSE)
+colnames(df)[1]='region'
+df=df[,1:2]
+df$hemi =''
+df$hemi[seq(2,68,2)] ='right'
+df$hemi[seq(1,67,2)] ='left'
+df$ACC=colMeans(SVM)
+
+
+someData2= df
+colnames(someData2)[2]='Fingerprinting accuracy'
+colnames(someData2)[1]='region'
+colnames(someData2)[3]='hemi'
+
+ggplot(someData2) +
+  geom_brain(atlas = dk, 
+             position = position_brain(hemi ~ side),
+             aes(fill = `ACC`)) +
+   scale_fill_gradient2(low = "#ECECEC", mid = "#ECECEC", high = "#E25987", midpoint = 0.50) +
+  #scale_fill_distiller(palette = "RdBu"
+  #                     , limits = c(0.4, 0.9))+
+  #viridis::scale_fill_viridis(option = 'magma')+
+  #scale_fill_gradient2(low="white", mid="#EC352F", high="#6C1917", 
+  #                     midpoint=0.6,   
+  #                     limits=c(0.4, 0.9 ))+
+  theme_void() 
+
+ggsave('~/Documents/PD_fingerprinting/ICC_output/2023_decode_HY_ROI_new_colour_90_10.pdf', device = "pdf")
+
+
+SVM=read.csv( '~/Documents/PD_fingerprinting/Results_from_SVM_class_of_HY_allROI2_new_data_80_20.csv')
+SVM=SVM[,-1]
+
+#### diff in ICC between PD and CTLS
+df=read.csv('~/Documents/PD_fingerprinting/new_analysis_Nov2022/Nov_2022_ICC_control_cohort.csv', header = FALSE, stringsAsFactors = FALSE)
+df2=read.csv('~/Documents/PD_fingerprinting/new_analysis_Nov2022/Nov_2022_ICC_PD_cohort.csv', header = FALSE, stringsAsFactors = FALSE)
+df[,2:452]=df2[,2:452]-df[,2:452]
+colnames(df)[1]='region'
+df$hemi =''
+df$hemi[seq(2,68,2)] ='right'
+df$hemi[seq(1,67,2)] ='left'
+
+df2=df[,-1]
+# Define X and Y data
+X=data.frame(delta= rowMeans(df2[,1:12]),theta= rowMeans(df2[,13:25]),alpha= rowMeans(df2[,25:39]),beta= rowMeans(df2[,40:90]), gamma= rowMeans(df2[,91:150]), hgamma= rowMeans(df2[,151:451]))
+
+df$ICC= rowMeans(X)
+
+someData2= df
+colnames(someData2)[1]='region'
+
+
+cor.test(colMeans(SVM), df$ICC )
+
+data4reg=data.frame(SVM= colMeans(SVM), ICC=df$ICC)
+#data4reg= as.data.frame(scale(data4reg))
+lm3=lm(SVM ~ ICC, data4reg)
+summary(lm3)
+
+
+
+permuted_index= read.csv('~/Documents/CAMCAN_outputs/neuromaps/permuted_indexes_of_dk_atlas.csv')
+permuted_index= permuted_index[,-1]
+permuted_index=permuted_index+1
+
+#gradient offset
+orig=cor.test(rowMeans(X), colMeans(SVM))
+permuted_corr=c()
+for (i in 1001:2000){
+  
+  cor_temp=cor.test(rowMeans(X), colMeans(SVM)[permuted_index[,i]])
+  permuted_corr= c(permuted_corr, cor_temp$estimate)
+  
+}
+
+sum(orig$estimate < permuted_corr)/1000
+# permuted p value for gradient = 0.00 !
+
+
+ggplot(data4reg, aes(x=SVM , y = ICC, fill=cbbPalette[3])) + 
+  geom_jitter(colour = cbbPalette[6]) + 
+  stat_smooth(method = "lm", colour = 'black',fullrange = T, fill=cbbPalette[3]) +
+  labs(title = paste("Adj R2 = ", signif(summary(lm3)$adj.r.squared, 5),
+                     "Intercept =", signif(lm3$coef[[1]],5 ),
+                     " Slope =", signif(lm3$coef[[2]], 5),
+                     " P =", signif(summary(lm3)$coef[2,4], 5) )) + scale_fill_manual(values=cbbPalette[3])  + theme_classic2() +   xlab("decoding accuracy (%)") + ylab("ICC")+
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14,face="bold"), legend.position = "none") 
+
+ggsave('~/Documents/PD_fingerprinting/figure/2023_Regression_SVM_ICC_broadband_80_20.pdf', device = "pdf", width=5, height=5, dpi=800)
+
+
+
+
+SVM=read.csv( '~/Documents/PD_fingerprinting/Results_from_SVM_class_of_HY_allROI2_new_data_70_30.csv')
+SVM=SVM[,-1]
+cor.test(colMeans(SVM), rowMeans(X) )
+
+data4reg=data.frame(SVM= colMeans(SVM), ICC=rowMeans(X))
+#data4reg= as.data.frame(scale(data4reg))
+lm3=lm(SVM ~ ICC, data4reg)
+summary(lm3)
+
+#gradient offset
+orig=cor.test(rowMeans(X), colMeans(SVM))
+permuted_corr=c()
+for (i in 2001:3000){
+  
+  cor_temp=cor.test(rowMeans(X), colMeans(SVM)[permuted_index[,i]])
+  permuted_corr= c(permuted_corr, cor_temp$estimate)
+  
+}
+
+sum(orig$estimate < permuted_corr)/1000
+# permuted p value for gradient = 0.00 !
+
+
+ggplot(data4reg, aes(x=SVM , y = ICC, fill=cbbPalette[3])) + 
+  geom_jitter(colour = cbbPalette[6]) + 
+  stat_smooth(method = "lm", colour = 'black',fullrange = T, fill=cbbPalette[3]) +
+  labs(title = paste("Adj R2 = ", signif(summary(lm3)$adj.r.squared, 5),
+                     "Intercept =", signif(lm3$coef[[1]],5 ),
+                     " Slope =", signif(lm3$coef[[2]], 5),
+                     " P =", signif(summary(lm3)$coef[2,4], 5) )) + scale_fill_manual(values=cbbPalette[3])  + theme_classic2() +   xlab("decoding accuracy (%)") + ylab("ICC")+
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14,face="bold"), legend.position = "none") 
+
+ggsave('~/Documents/PD_fingerprinting/figure/2023_Regression_SVM_ICC_broadband_70_30.pdf', device = "pdf", width=5, height=5, dpi=800)
+
+
+SVM=read.csv( '~/Documents/PD_fingerprinting/Results_from_SVM_class_of_HY_allROI2_new_data_90_10.csv')
+SVM=SVM[,-1]
+cor.test(colMeans(SVM), rowMeans(df[,2:452]) )
+
+data4reg=data.frame(SVM= colMeans(SVM), ICC=rowMeans(X))
+#data4reg= as.data.frame(scale(data4reg))
+lm3=lm(SVM ~ ICC, data4reg)
+summary(lm3)
+
+#gradient offset
+orig=cor.test(rowMeans(X), colMeans(SVM))
+permuted_corr=c()
+for (i in 3001:4000){
+  
+  cor_temp=cor.test(rowMeans(X), colMeans(SVM)[permuted_index[,i]])
+  permuted_corr= c(permuted_corr, cor_temp$estimate)
+  
+}
+
+sum(orig$estimate < permuted_corr)/1000
+# permuted p value for gradient = 0.00 !
+
+
+ggplot(data4reg, aes(x=SVM , y = ICC, fill=cbbPalette[3])) + 
+  geom_jitter(colour = cbbPalette[6]) + 
+  stat_smooth(method = "lm", colour = 'black',fullrange = T, fill=cbbPalette[3]) +
+  labs(title = paste("Adj R2 = ", signif(summary(lm3)$adj.r.squared, 5),
+                     "Intercept =", signif(lm3$coef[[1]],5 ),
+                     " Slope =", signif(lm3$coef[[2]], 5),
+                     " P =", signif(summary(lm3)$coef[2,4], 5) )) + scale_fill_manual(values=cbbPalette[3])  + theme_classic2() +   xlab("decoding accuracy (%)") + ylab("ICC")+
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14,face="bold"), legend.position = "none") 
+
+ggsave('~/Documents/PD_fingerprinting/figure/2023_Regression_SVM_ICC_broadband_90_10.pdf', device = "pdf", width=5, height=5, dpi=800)
+
+
+
+
+```
+
+
+```{r DONE Plot example spectra fullband }
+
+cbbPalette <- c( '#808080',"#90319D","#E25987","#FFBF00","#3A3AA4", "#31CD71", "#F0792C", "#6C3ABF")
+
+
+# read data and compute data for demographic table
+data=read.csv('~/Documents/PD_fingerprinting/QPN_demo_compiled.csv', stringsAsFactors = FALSE)
+
+target= read.csv('~/Documents/PD_fingerprinting/features_4_fingeprinting_target.csv' )
+
+database= read.csv('~/Documents/PD_fingerprinting/features_4_fingeprinting_database.csv' )
+
+target=target[,-1]
+database=database[,-1]
+
+roi_index= (451*(44-1)+1):(451*(44-1)+451)
+
+target_LSP= target[,roi_index]
+database_LSP= database[,roi_index]
+
+target_LSP= (target_LSP+database_LSP)/2
+
+target_LSP= cbind(data, stack(target_LSP))
+
+target_LSP$ind = plyr::mapvalues(target_LSP$ind , unique(target_LSP$ind ), seq(0,150,1/3))
+
+target_LSP$ind= as.numeric(as.character(target_LSP$ind))
+
+
+data4plot= target_LSP %>% group_by(Group, ind) %>% summarise( power= mean(log(values)), SEM= (sd(log(values))/sqrt(n())))
+data4plot= data4plot[!is.na(data4plot$Group),]
+
+control= data4plot[data4plot$Group=='Control',]
+
+ggplot(data4plot, aes(x= ind, y = power, fill= Group,colour= Group, ymin=power-SEM, ymax=power+SEM)) + geom_ribbon(alpha=0.5, colour= NA) + geom_line() + theme_classic2() + xlim(1,100) +  coord_cartesian(xlim = c(1, 40), ylim= c(-2,3.5) )
+
+ggsave('~/Documents/PD_fingerprinting/figure/Spectrum_right_pericalcarine_group.pdf', device = "pdf", width=10, height=5, dpi=800)
+
+target_LSP= target_LSP[target_LSP$Group== 'Parkinson', ]
+target_LSP= target_LSP[!is.na(target_LSP$updrs2), ]
+target_LSP= target_LSP[!is.na(target_LSP$moca2), ]
+target_LSP$updrs2_binned=target_LSP$updrs2> median(target_LSP$updrs2)
+target_LSP$moca_bin= target_LSP$moca2 >  24
+
+data4plot= target_LSP %>% group_by(updrs2_binned, moca_bin, ind) %>% summarise( power= mean(log(values)), SEM= (sd(log(values))/sqrt(n())))
+data4plot= data4plot[!is.na(data4plot$updrs2_binned),]
+data4plot= data4plot[!is.na(data4plot$moca_bin),]
+
+control=cbind(data4plot[1:451,1:2],control[,-1])
+control$Group= 'Control'
+control$updrs2_binned= 'FALSE'
+control$moca_bin= 'Control'
+
+control2=control
+control2$Group= 'Control'
+control2$updrs2_binned= 'TRUE'
+control2$moca_bin= 'Control'
+
+data4plot$updrs2_binned= as.character(data4plot$updrs2_binned)
+data4plot$moca_bin= as.character(data4plot$moca_bin)
+data4plot$Group='PD'
+data4plot=rbind(control,control2, data4plot)
+
+
+ggplot(data4plot, aes(x= ind, y = power, fill= moca_bin,colour= moca_bin, ymin=power-SEM, ymax=power+SEM, linetype= updrs2_binned)) + geom_ribbon(alpha=0.5, colour= NA) + geom_line() + theme_classic2() +  xlim(1,100) +  coord_cartesian(xlim = c(1, 40), ylim= c(-2,3.5) ) + scale_color_manual(values=cbbPalette[c(1, 5,7)]) + scale_fill_manual(values=cbbPalette[c(1, 5,7)]) + facet_wrap(~updrs2_binned)
+
+ggsave('~/Documents/PD_fingerprinting/figure/Spectrum_right_pericalcarine_MOCA_inter.pdf', device = "pdf", width=10, height=5, dpi=800)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+data$HY_bin = data$Hoehn.and.Yahr.score >1.5
+roi_index= (451*(46-1)+1):(451*(46-1)+451)
+
+target_LSP= target[,roi_index]
+database_LSP= database[,roi_index]
+
+target_LSP= (target_LSP+database_LSP)/2
+
+target_LSP= cbind(data, stack(target_LSP))
+
+target_LSP$ind = plyr::mapvalues(target_LSP$ind , unique(target_LSP$ind ), seq(0,150,1/3))
+
+target_LSP$ind= as.numeric(as.character(target_LSP$ind))
+
+target_LSP$ind= as.numeric(as.character(target_LSP$ind))
+target_LSP= target_LSP[!is.na(target_LSP$updrs2),]
+target_LSP= target_LSP[!is.na(target_LSP$HY_bin),]
+target_LSP$updrs2_binned=target_LSP$updrs2>median(target_LSP$updrs2)
+
+data4plot= target_LSP %>% group_by(HY_bin, ind) %>% summarise( power= mean(log(values)), SEM= (sd(log(values))/sqrt(n())))
+data4plot= data4plot[!is.na(data4plot$HY_bin),]
+
+ggplot(data4plot, aes(x= ind, y = power, fill= HY_bin,colour= HY_bin, ymin=power-SEM, ymax=power+SEM)) + geom_ribbon(alpha=0.5, colour= NA) + geom_line() + theme_classic2() + xlim(1,100) +  coord_cartesian(xlim = c(1, 40), ylim= c(-2,3.5) )+ scale_color_manual(values=cbbPalette[c(5,7)]) + scale_fill_manual(values=cbbPalette[c(5,7)])
+
+ggsave('~/Documents/PD_fingerprinting/figure/Spectrum_right_postcentral_HY.pdf', device = "pdf", width=5, height=5, dpi=800)
+
+
+
+roi_index= (451*(46-1)+1):(451*(46-1)+451)
+
+target_LSP= target[,roi_index]
+database_LSP= database[,roi_index]
+
+target_LSP= (target_LSP+database_LSP)/2
+
+target_LSP= cbind(data, stack(target_LSP))
+
+target_LSP$ind = plyr::mapvalues(target_LSP$ind , unique(target_LSP$ind ), seq(0,150,1/3))
+
+target_LSP$ind= as.numeric(as.character(target_LSP$ind))
+
+
+controls= target_LSP %>% group_by(Group, ind) %>% summarise( power= mean(log(values)), SEM= (sd(log(values))/sqrt(n())))
+
+controls=controls[controls$Group=='Control',]
+
+colnames(controls)[1]= 'HY_bin'
+controls$Group = 'Controls'
+
+data4plot$HY_bin= as.character(data4plot$HY_bin)
+data4plot$Group='PD'
+data4plot=rbind(controls, data4plot)
+
+ggplot(data4plot, aes(x= ind, y = power, fill= HY_bin,colour= HY_bin, ymin=power-SEM, ymax=power+SEM)) + geom_ribbon(alpha=0.5, colour= NA) + geom_line() + theme_classic2() +xlim(1,100) +  coord_cartesian(xlim = c(1, 40), ylim= c(-2,3.5) )+ theme(legend.position = 'none')+ scale_color_manual(values=cbbPalette[c(1,5,7)]) + scale_fill_manual(values=cbbPalette[c(1,5,7)])
+
+ggsave('~/Documents/PD_fingerprinting/figure/Spectrum_right_postcentral_HY_controls.pdf', device = "pdf", width=5, height=5, dpi=800)
+
+
+
+roi_index= (451*(59-1)+1):(451*(59-1)+451)
+
+target_LSP= target[,roi_index]
+database_LSP= database[,roi_index]
+
+target_LSP= (target_LSP+database_LSP)/2
+
+target_LSP= cbind(data, stack(target_LSP))
+
+target_LSP$ind = plyr::mapvalues(target_LSP$ind , unique(target_LSP$ind ), seq(0,150,1/3))
+
+target_LSP$ind= as.numeric(as.character(target_LSP$ind))
+
+
+data4plot= target_LSP %>% group_by(Group, ind) %>% summarise( power= mean(log(values)), SEM= (sd(log(values))/sqrt(n())))
+data4plot= data4plot[!is.na(data4plot$Group),]
+
+control= data4plot[data4plot$Group=='Control',]
+
+ggplot(data4plot, aes(x= ind, y = power, fill= Group,colour= Group, ymin=power-SEM, ymax=power+SEM)) + geom_ribbon(alpha=0.5, colour= NA) + geom_line() + theme_classic2() + xlim(1,100) +  coord_cartesian(xlim = c(1, 40), ylim= c(-2,3.5) )
+
+ggsave('~/Documents/PD_fingerprinting/figure/Spectrum_right_postcentral_HY_group.pdf', device = "pdf", width=10, height=5, dpi=800)
+
+
+
+```
+
+
+
+
+
+
+```{r DONE Plot aperiodic spectrum }
+
+
+cbbPalette <- c( '#808080',"#90319D","#E25987","#FFBF00","#3A3AA4", "#31CD71", "#F0792C", "#6C3ABF")
+
+
+# read data and compute data for demographic table
+data=read.csv('~/Documents/PD_fingerprinting/QPN_demo_compiled.csv', stringsAsFactors = FALSE)
+
+target= read.csv('~/Documents/PD_fingerprinting/new_analysis_Nov2022/NEW_aperiodic_target.csv' )
+
+database= read.csv('~/Documents/PD_fingerprinting/new_analysis_Nov2022/NEW_aperiodic_database.csv' )
+
+target=target[,-1]
+database=database[,-1]
+
+roi_index= (115*(59-1)+1):(115*(59-1)+115)
+
+target_LSP= target[,roi_index]
+database_LSP= database[,roi_index]
+
+target_LSP= (target_LSP+database_LSP)/2
+
+target_LSP= cbind(data, stack(target_LSP))
+
+target_LSP$ind = plyr::mapvalues(target_LSP$ind , unique(target_LSP$ind ), seq(2,40,1/3))
+
+target_LSP$ind= as.numeric(as.character(target_LSP$ind))
+
+
+data4plot= target_LSP %>% group_by(Group, ind) %>% summarise( power= mean(log(values)), SEM= (sd(log(values))/sqrt(n())))
+data4plot= data4plot[!is.na(data4plot$Group),]
+
+control= data4plot[data4plot$Group=='Control',]
+
+ggplot(data4plot, aes(x= ind, y = power, fill= Group,colour= Group, ymin=power-SEM, ymax=power+SEM)) + geom_ribbon(alpha=0.5, colour= NA) + geom_line() + theme_classic2() + xlim(1,100) +  coord_cartesian(xlim = c(1, 40), ylim= c(-2,3.5) )
+
+ggsave('~/Documents/PD_fingerprinting/figure/Aperiodic_Spectrum_left_superior_parietal_group.pdf', device = "pdf", width=10, height=5, dpi=800)
+
+target_LSP= target_LSP[target_LSP$Group== 'Parkinson', ]
+target_LSP= target_LSP[!is.na(target_LSP$updrs2), ]
+target_LSP= target_LSP[!is.na(target_LSP$moca2), ]
+target_LSP$updrs2_binned=target_LSP$updrs2> median(target_LSP$updrs2)
+target_LSP$moca_bin= target_LSP$moca2 > 24
+
+data4plot= target_LSP %>% group_by(updrs2_binned, moca_bin, ind) %>% summarise( power= mean(log(values)), SEM= (sd(log(values))/sqrt(n())))
+data4plot= data4plot[!is.na(data4plot$updrs2_binned),]
+data4plot= data4plot[!is.na(data4plot$moca_bin),]
+
+control=cbind(data4plot[1:115,1:2],control[,-1])
+control$Group= 'Control'
+control$updrs2_binned= 'FALSE'
+control$moca_bin= 'Control'
+
+control2=control
+control2$Group= 'Control'
+control2$updrs2_binned= 'TRUE'
+control2$moca_bin= 'Control'
+
+data4plot$updrs2_binned= as.character(data4plot$updrs2_binned)
+data4plot$moca_bin= as.character(data4plot$moca_bin)
+data4plot$Group='PD'
+data4plot=rbind(control,control2, data4plot)
+
+
+ggplot(data4plot, aes(x= ind, y = power, fill= moca_bin,colour= moca_bin, ymin=power-SEM, ymax=power+SEM, linetype= updrs2_binned)) + geom_ribbon(alpha=0.5, colour= NA) + geom_line() + theme_classic2() +  xlim(1,100) +  coord_cartesian(xlim = c(1, 40), ylim= c(-2,3.5) ) + scale_color_manual(values=cbbPalette[c(1, 5,7)]) + scale_fill_manual(values=cbbPalette[c(1, 5,7)]) + facet_wrap(~updrs2_binned)
+
+ggsave('~/Documents/PD_fingerprinting/figure/Aperiodic_Spectrum_left_superior_parietal_MOCA_inter.pdf', device = "pdf", width=10, height=5, dpi=800)
+
+data4plotTEMP=data4plot
+
+
+target= read.csv('~/Documents/PD_fingerprinting/features_4_fingeprinting_target.csv' )
+
+database= read.csv('~/Documents/PD_fingerprinting/features_4_fingeprinting_database.csv' )
+
+target=target[,-1]
+database=database[,-1]
+
+roi_index= (451*(59-1)+1):(451*(59-1)+451)
+
+target_LSP= target[,roi_index]
+database_LSP= database[,roi_index]
+
+target_LSP= (target_LSP+database_LSP)/2
+
+target_LSP= cbind(data, stack(target_LSP))
+
+target_LSP$ind = plyr::mapvalues(target_LSP$ind , unique(target_LSP$ind ), seq(0,150,1/3))
+
+target_LSP$ind= as.numeric(as.character(target_LSP$ind))
+
+
+data4plot= target_LSP %>% group_by(Group, ind) %>% summarise( power= mean(log(values)), SEM= (sd(log(values))/sqrt(n())))
+data4plot= data4plot[!is.na(data4plot$Group),]
+
+control= data4plot[data4plot$Group=='Control',]
+
+ggplot(data4plot, aes(x= ind, y = power, fill= Group,colour= Group, ymin=power-SEM, ymax=power+SEM)) + geom_ribbon(alpha=0.5, colour= NA) + geom_line() + theme_classic2() + xlim(1,100) +  coord_cartesian(xlim = c(1, 40), ylim= c(-2,3.5) )
+
+
+target_LSP= target_LSP[target_LSP$Group== 'Parkinson', ]
+target_LSP= target_LSP[!is.na(target_LSP$updrs2), ]
+target_LSP= target_LSP[!is.na(target_LSP$moca2), ]
+target_LSP$updrs2_binned=target_LSP$updrs2> median(target_LSP$updrs2)
+target_LSP$moca_bin= target_LSP$moca2 > 24
+
+data4plot= target_LSP %>% group_by(updrs2_binned, moca_bin, ind) %>% summarise( power= mean(log(values)), SEM= (sd(log(values))/sqrt(n())))
+data4plot= data4plot[!is.na(data4plot$updrs2_binned),]
+data4plot= data4plot[!is.na(data4plot$moca_bin),]
+
+control=cbind(data4plot[1:451,1:2],control[,-1])
+control$Group= 'Control'
+control$updrs2_binned= 'FALSE'
+control$moca_bin= 'Control'
+
+control2=control
+control2$Group= 'Control'
+control2$updrs2_binned= 'TRUE'
+control2$moca_bin= 'Control'
+
+data4plot$updrs2_binned= as.character(data4plot$updrs2_binned)
+data4plot$moca_bin= as.character(data4plot$moca_bin)
+data4plot$Group='PD'
+data4plot=rbind(control,control2, data4plot)
+
+
+ggplot(data4plot, aes(x= ind, y = power, fill= moca_bin,colour= moca_bin, ymin=power-SEM, ymax=power+SEM, linetype= updrs2_binned)) + geom_ribbon(alpha=0.5, colour= NA) + geom_line() + theme_classic2() +  xlim(1,100) +  coord_cartesian(xlim = c(1, 40), ylim= c(-2,3.5) ) + scale_color_manual(values=cbbPalette[c(1, 5,7)]) + scale_fill_manual(values=cbbPalette[c(1, 5,7)]) + facet_wrap(~updrs2_binned)
+
+
+ggplot(data4plot, aes(x= ind, y = power, fill= moca_bin,colour= moca_bin, ymin=power-SEM, ymax=power+SEM)) + geom_ribbon(data=data4plotTEMP,  alpha=0.5, colour= NA) + geom_line(data= data4plotTEMP, linetype= 'dashed') + geom_ribbon(alpha=0.5, colour= NA) + geom_line() + theme_classic2() +  xlim(1,100) +  coord_cartesian(xlim = c(1, 40), ylim= c(-2,3.5) ) + scale_color_manual(values=cbbPalette[c(1, 5,7)]) + scale_fill_manual(values=cbbPalette[c(1, 5,7)]) + facet_wrap(~updrs2_binned) + theme(legend.position = 'none')
+
+ggsave('~/Documents/PD_fingerprinting/figure/Aperiodic_Spectrum_left_superior_parietal_MOCA_inter.pdf', device = "pdf", width=10, height=5, dpi=800)
+
+
+ggplot(data4plot, aes(x= ind, y = power, fill= moca_bin,colour= moca_bin, ymin=power-SEM, ymax=power+SEM)) + geom_ribbon(data=data4plotTEMP,  alpha=0.5, colour= NA) + geom_line(data= data4plotTEMP, linetype= 'dashed') + geom_ribbon(alpha=0.5, colour= NA) + geom_line() + theme_classic2() +  xlim(1,100) +  coord_cartesian(xlim = c(1, 40), ylim= c(-2,3.5) ) + scale_color_manual(values=cbbPalette[c(1, 5,7)]) + scale_fill_manual(values=cbbPalette[c(1, 5,7)]) + facet_wrap(~updrs2_binned)
+
+ggsave('~/Documents/PD_fingerprinting/figure/Aperiodic_Spectrum_left_superior_parietal_MOCA_inter_legend.pdf', device = "pdf", width=10, height=5, dpi=800)
+
+
+```
+
+``` {r DONE short participant differentiation }
+
+cbbPalette <- c( "#90319D","#E25987","#FFBF00","#3A3AA4", "#31CD71", "#F0792C", "#6C3ABF")
+
+df=read.csv("~/Documents/PD_fingerprinting/new_analysis_Nov2022/short_recordings.csv", header = TRUE, stringsAsFactors = FALSE)
+df$band= factor(df$band,levels = c("Fullband"))
+df$band=plyr::mapvalues(df$band, unique(df$band), c( "broadband"))
+
+df$Group= factor(df$Group,levels = c("CTL", "PD", 'PDvsCTL'))
+df$Group=plyr::mapvalues(df$Group, unique(df$Group), c( "control", "PD", "PD vs HC"))
+df$dataset_distance=df$dataset2 - df$dataset1
+df$ACC= rowMeans(df[,3:4])
+df$ACC=as.numeric(df$ACC)*100
+
+data_plot=df
+dodge <- position_dodge(width = 0.9)
+ggplot(data=data_plot, aes(x=band, y=ACC,fill=Group, colour=Group, width=.5)) +  geom_jitter(position= position_jitterdodge(jitter.width=0.2, dodge.width=0.9), size=4, alpha =0.7 ) + stat_summary(fun.data = mean_se, geom = "errorbar", size=2.5, width=0.5, position = dodge, colour='#B7BBBE')  +
+  stat_summary(fun.data = "mean_cl_boot", geom = "point", size= 7, position = dodge)  +theme_classic() + labs(y="differentiation accuracy (%)", x="",title="") +  theme(text = element_text(size=40), legend.title=element_blank()) + scale_color_manual(values=cbbPalette) + coord_cartesian(ylim = c(0, 100))
+
+ggsave('~/Documents/PD_fingerprinting/new_analysis_Nov2022/figure/SHORT_fingerprinting_cohort_bands_4_cat.pdf', device = "pdf", width=8, height=8, dpi=800)
+
+
+
+dataSummary= data_plot %>% group_by(Group, band) %>% summarise( power= mean(ACC), SEM= (sd(ACC)/sqrt(n())))
+
+
+data_plot=df
+data_plot$dataset_distance= 30*(data_plot$dataset_distance-1)
+ggplot(data=data_plot, aes(x=dataset_distance, y=ACC, colour=Group, width=.5)) + stat_summary(fun.data = mean_se, geom = "errorbar", size=2.5, width=0.5) + geom_smooth(method = "lm",aes(fill = Group), size=2) + stat_summary(fun.data = "mean_cl_boot", geom = "point", size= 7,)  +theme_classic() + labs(y="differentiation accuracy (%)", x="",title="") +  theme(text = element_text(size=40), legend.position = 'none') + scale_color_manual(values=cbbPalette) + scale_fill_manual(values=cbbPalette) + coord_cartesian(xlim = c(0, 300))
+
+ggsave('~/Documents/PD_fingerprinting/new_analysis_Nov2022/figure/SHORT_fingerprinting_linear_decay_4_cat_none.pdf', device = "pdf", width=8, height=8, dpi=800)
+
+
+
+data4reg= df[df$Group != 'full cohort',]
+
+lm0=lm(ACC ~ 1, data4reg)
+lm2=lm(ACC ~ 1 + dataset_distance , data4reg)
+lm3=lm(ACC ~ 1 + dataset_distance  + Group, data4reg)
+lm4=lm(ACC ~ 1 + dataset_distance  + Group +Group*dataset_distance, data4reg)
+
+anova(lm0, lm2,lm3, lm4)
+summary(lm4)
+sjPlot::tab_model(lm4)
+
+bf = generalTestBF(ACC ~ 1 + dataset_distance + Group +Group:dataset_distance, data4reg, whichModels = "top")
+summary(bf)
+
+
+```
+
+
+``` {r DONE short self corr }
+
+cbbPalette <- c( "#90319D","#E25987","#FFBF00","#3A3AA4", "#31CD71", "#F0792C", "#6C3ABF")
+
+# read data and compute data for demographic table
+data=read.csv('~/Documents/PD_fingerprinting/QPN_demo_compiled.csv', stringsAsFactors = FALSE)
+
+data$moca_bin= data$moca2 > 24
+
+# # # # # # # 
+
+df = read.csv('~/Documents/PD_fingerprinting/new_analysis_Nov2022/Nov2022_short_recordings_NEW_self_corr.csv', header = FALSE)
+temp = read.csv("~/Documents/PD_fingerprinting/new_analysis_Nov2022/Nov2022_complete_subj_short_recordings_NEW.csv", header = FALSE, stringsAsFactors = FALSE)
+
+temp$dataset_distance=temp$V4 - temp$V3
+colnames(temp)[1:4]= c('ACC1', 'ACC2', 'dataset1', 'dataset2')
+  
+self_corr= cbind(stack(df), rep(temp$dataset1[1:78], each=133), rep(temp$dataset2[1:78], each=133), rep(temp$dataset_distance[1:78], each=133), rep(data$Group,78), rep(data$updrs2,78), rep(data$moca2,78),rep(data$recording_length,78), rep(data$HLU,78) )
+
+colnames(self_corr)[c(3,4, 6, 7, 8, 9, 10)] = c('dataset1', 'dataset2', 'Group', 'updrs2', 'moca2', 'recording_length', 'HLU')
+self_corr$dataset_distance= self_corr$dataset2 - self_corr$dataset1
+self_corr$band = 'broadband'
+self_corr_bands=self_corr
+
+
+
+data_plot=self_corr
+ggplot(data=data_plot, aes(x=dataset_distance, y=values, colour=Group, width=.5)) + stat_summary(fun.data = mean_se, geom = "errorbar", size=2.5, width=0.5) + geom_smooth(method = "lm",aes(fill = Group), size=2) + stat_summary(fun.data = "mean_cl_boot", geom = "point", size= 7,)  +theme_classic() + labs(y="auto-correlation (r)", x="",title="") +  theme(text = element_text(size=40), legend.title=element_blank()) + scale_color_manual(values=cbbPalette[c(1,3)]) + scale_fill_manual(values=cbbPalette[c(1,3)]) 
+
+ggsave('~/Documents/PD_fingerprinting/new_analysis_Nov2022/figure/SHORT_selfcorr_linear_decay_legend.pdf', device = "pdf", width=8, height=8, dpi=800)
+
+data_plot=self_corr
+ggplot(data=data_plot, aes(x=dataset_distance, y=values, colour=Group, width=.5)) + stat_summary(fun.data = mean_se, geom = "errorbar", size=2.5, width=0.5) + geom_smooth(method = "lm",aes(fill = Group), size=2) + stat_summary(fun.data = "mean_cl_boot", geom = "point", size= 7,)  +theme_classic() + labs(y="auto-correlation (r)", x="",title="") +  theme(text = element_text(size=40), legend.position = 'none', legend.title=element_blank()) + scale_color_manual(values=cbbPalette[c(1,3)]) + scale_fill_manual(values=cbbPalette[c(1,3)]) 
+
+ggsave('~/Documents/PD_fingerprinting/new_analysis_Nov2022/figure/SHORT_selfcorr_linear_decay.pdf', device = "pdf", width=8, height=8, dpi=800)
+
+
+
+data_plot=self_corr
+ggplot(data=data_plot, aes(x=Group, y=values, colour=Group, width=.5)) + stat_summary(fun.data = mean_se, geom = "errorbar", size=2.5, width=0.5)  +   stat_summary(fun = "mean", geom = "point", size=5) + theme_classic() + labs(y="auto-correlation (r)", x="",title="") +  theme(text = element_text(size=40), legend.position = 'none', legend.title=element_blank()) + coord_cartesian(ylim = c(0.775, 0.825)) + scale_color_manual(values=cbbPalette[c(1,2,3)]) + scale_fill_manual(values=cbbPalette[c(1,2,3)]) 
+
+ggsave('~/Documents/PD_fingerprinting/new_analysis_Nov2022/figure/short_auto_corr_boxplot.pdf', device = "pdf", width=8, height=8, dpi=800)
+
+
+lm0=lm(values ~ 1, self_corr)
+lm1=lm(values ~ 1 + dataset_distance, self_corr)
+lm2=lm(values ~ 1 + dataset_distance + Group, self_corr)
+lm3=lm(values ~ 1 + dataset_distance + Group +Group*dataset_distance, self_corr)
+
+anova(lm0, lm1,lm2,lm3)
+summary(lm3)
+
+self_corr$values= DescTools::FisherZ(self_corr$values)
+lm0=lm(values ~ 1, self_corr)
+lm1=lm(values ~ 1 + dataset_distance, self_corr)
+lm2=lm(values ~ 1 + dataset_distance + Group, self_corr)
+lm3=lm(values ~ 1 + dataset_distance + Group +Group*dataset_distance, self_corr)
+
+anova(lm0, lm1,lm2,lm3)
+summary(lm3)
+sjPlot::tab_model(lm3)
+
+lm0=lm(values ~ 1, self_corr)
+lm1=lm(values ~ 1 + dataset_distance + recording_length, self_corr)
+lm2=lm(values ~ 1 + dataset_distance + recording_length + Group, self_corr)
+lm3=lm(values ~ 1 + dataset_distance + recording_length + Group +Group*dataset_distance, self_corr)
+
+anova(lm0, lm1,lm2,lm3)
+summary(lm3)
+
+self_corr_new= self_corr[!is.na(self_corr$HLU), ]
+lm0=lm(values ~ 1, self_corr_new)
+lm1=lm(values ~ 1 + dataset_distance + HLU+  recording_length, self_corr_new)
+lm2=lm(values ~ 1 + dataset_distance + HLU+ recording_length + Group, self_corr_new)
+lm3=lm(values ~ 1 + dataset_distance + HLU+ recording_length + Group +Group*dataset_distance, self_corr_new)
+
+anova(lm0, lm1,lm2,lm3)
+summary(lm3)
+sjPlot::tab_model(lm3)
+
+
+
+
+
+
+# # # # # # # 
+# cross correlatiom
+# # # # # # # 
+
+df = read.csv('~/Documents/PD_fingerprinting/new_analysis_Nov2022/Nov2022_CTL_short_recordings_NEW_cross_corr.csv', header = FALSE)
+temp = read.csv("~/Documents/PD_fingerprinting/new_analysis_Nov2022/Nov2022_complete_subj_short_recordings_NEW.csv", header = FALSE, stringsAsFactors = FALSE)
+
+colnames(temp)[3:4] = c('dataset1', 'dataset2')
+temp$dataset_distance=temp$dataset2 - temp$dataset1
+  
+self_corr= cbind(stack(df), rep(temp$dataset1[1:78], each=54), rep(temp$dataset2[1:78], each=54), rep(temp$dataset_distance[1:78], each=54))
+colnames(self_corr)[c(3,4, 5)] = c('dataset1', 'dataset2', 'distance')
+self_corr$dataset_distance= self_corr$dataset2 - self_corr$dataset1
+self_corr$band = 'broadband'
+self_corr_bands=self_corr
+self_corr_bands$Group = 'within controls'
+
+
+
+df = read.csv('~/Documents/PD_fingerprinting/new_analysis_Nov2022/Nov2022_PKD_short_recordings_NEW_cross_corr.csv', header = FALSE)
+temp = read.csv("~/Documents/PD_fingerprinting/new_analysis_Nov2022/Nov2022_complete_subj_short_recordings_NEW.csv", header = FALSE, stringsAsFactors = FALSE)
+
+colnames(temp)[3:4] = c('dataset1', 'dataset2')
+temp$dataset_distance=temp$dataset2 - temp$dataset1
+  
+self_corr= cbind(stack(df), rep(temp$dataset1[1:78], each=79), rep(temp$dataset2[1:78], each=79), rep(temp$dataset_distance[1:78], each=79))
+colnames(self_corr)[c(3,4, 5)] = c('dataset1', 'dataset2', 'distance')
+self_corr$dataset_distance= self_corr$dataset2 - self_corr$dataset1
+self_corr$band = 'broadband'
+self_corr$Group = 'within PD'
+self_corr_bands=rbind(self_corr_bands,self_corr)
+
+
+df = read.csv('~/Documents/PD_fingerprinting/new_analysis_Nov2022/Nov2022_PDVSCT_short_recordings_NEW_cross_corr.csv', header = FALSE)
+df=df[-1,-1]
+temp = read.csv("~/Documents/PD_fingerprinting/new_analysis_Nov2022/Nov2022_complete_subj_short_recordings_NEW.csv", header = FALSE, stringsAsFactors = FALSE)
+
+colnames(temp)[3:4] = c('dataset1', 'dataset2')
+temp$dataset_distance=temp$dataset2 - temp$dataset1
+df=df[55:133,]
+  
+self_corr= cbind(stack(df), rep(temp$dataset1[1:78], each=79), rep(temp$dataset2[1:78], each=79), rep(temp$dataset_distance[1:78], each=79))
+colnames(self_corr)[c(3,4, 5)] = c('dataset1', 'dataset2', 'distance')
+self_corr$dataset_distance= self_corr$dataset2 - self_corr$dataset1
+self_corr$band = 'broadband'
+self_corr$Group = 'PD in controls'
+self_corr_bands=rbind(self_corr_bands,self_corr)
+
+self_corr_bands$Group = factor(self_corr_bands$Group, levels = c('within controls', 'within PD', 'PD in controls'))
+
+data_plot=self_corr_bands
+ggplot(data=data_plot, aes(x=dataset_distance, y=values, colour=Group, width=.5)) + stat_summary(fun.data = mean_se, geom = "errorbar", size=2.5, width=0.5) + geom_smooth(method = "lm",aes(fill = Group), size=2) + stat_summary(fun.data = "mean_cl_boot", geom = "point", size= 7,)  +theme_classic() + labs(y="self-correlation (r)", x="",title="") +  theme(text = element_text(size=40), legend.title=element_blank()) + scale_color_manual(values=cbbPalette[c(1,2,3)]) + scale_fill_manual(values=cbbPalette[c(1,2,3)]) 
+
+
+data_plot=self_corr_bands
+ggplot(data=data_plot, aes(x=dataset_distance, y=values, colour=Group, width=.5)) + stat_summary(fun.data = mean_se, geom = "errorbar", size=2.5, width=0.5) + geom_smooth(method = "lm",aes(fill = Group), size=2) + stat_summary(fun.data = "mean_cl_boot", geom = "point", size= 7,)  +theme_classic() + labs(y="cross-correlation (r)", x="",title="") +  theme(text = element_text(size=40), legend.position = 'none', legend.title=element_blank()) + scale_color_manual(values=cbbPalette[c(1,2,3)]) + scale_fill_manual(values=cbbPalette[c(1,2,3)]) 
+
+ggsave('~/Documents/PD_fingerprinting/new_analysis_Nov2022/figure/SHORT_crosscorr_linear_decay.pdf', device = "pdf", width=8, height=8, dpi=800)
+
+data_plot=self_corr_bands
+ggplot(data=data_plot, aes(x=Group, y=values, colour=Group, width=.5)) + stat_summary(fun.data = mean_se, geom = "errorbar", size=2.5, width=0.5) + geom_smooth(method = "lm",aes(fill = Group), size=2) + stat_summary(fun.data = "mean_cl_boot", geom = "point", size= 7,)  +theme_classic() + labs(y="cross-correlation (r)", x="",title="") +  theme(text = element_text(size=40), legend.position = 'none', legend.title=element_blank()) + coord_cartesian(ylim = c(0.38, 0.41)) + scale_color_manual(values=cbbPalette[c(1,2,3)]) + scale_fill_manual(values=cbbPalette[c(1,2,3)]) 
+
+ggsave('~/Documents/Alex_fingerprinting/new_analysis_Nov2022/figure/SHORT_crosscorr_.pdf', device = "pdf", width=8, height=8, dpi=800)
+
+
+
+```
+
+
+
+
+
+``` {r DONE neuromaps functional gradient & SPINS }
+
+cbbPalette <- c( "#90319D","#E25987","#FFBF00","#3A3AA4", "#31CD71", "#F0792C", "#6C3ABF")
+
+#### diff in ICC between PD and CTLS
+df=read.csv('~/Documents/PD_fingerprinting/new_analysis_Nov2022/Nov_2022_ICC_control_cohort.csv', header = FALSE, stringsAsFactors = FALSE)
+df2=read.csv('~/Documents/PD_fingerprinting/new_analysis_Nov2022/Nov_2022_ICC_PD_cohort.csv', header = FALSE, stringsAsFactors = FALSE)
+df[,2:452]=df2[,2:452]-df[,2:452]
+colnames(df)[1]='region'
+df$hemi =''
+df$hemi[seq(2,68,2)] ='right'
+df$hemi[seq(1,67,2)] ='left'
+
+df2=df[,-1]
+# Define X and Y data
+X=data.frame(delta= rowMeans(df2[,1:12]),theta= rowMeans(df2[,13:25]),alpha= rowMeans(df2[,25:39]),beta= rowMeans(df2[,40:90]), gamma= rowMeans(df2[,91:150]), hgamma= rowMeans(df2[,151:451]))
+
+x2=rowMeans(X)
+
+# fullband
+someData3= data.frame(df$region, x2, df$hemi)
+colnames(someData3)= c('region', 'ICC', 'hemi')
+
+### func grad
+neuromaps= read.csv('~/Documents/PD_fingerprinting/neuromaps/receptor_data_scale033_full.csv')
+cor.test(someData3$ICC, neuromaps$func_grad_01)
+
+
+data4plot= data.frame(fullband= someData3$ICC, functiona_grad= neuromaps$func_grad_01)
+
+lm3=lm(`functiona_grad` ~ fullband, data4plot)
+summary(lm3)
+
+ggplot(data4plot, aes(x=functiona_grad , y = fullband, fill=cbbPalette[6])) + 
+  geom_jitter(colour = cbbPalette[6]) + 
+  stat_smooth(method = "lm", colour = 'black',fullrange = T, fill=cbbPalette[6]) +
+  labs(title = paste("Adj R2 = ", signif(summary(lm3)$adj.r.squared, 5),
+                     "Intercept =", signif(lm3$coef[[1]],5 ),
+                     " Slope =", signif(lm3$coef[[2]], 5),
+                     " P =", signif(summary(lm3)$coef[2,4], 5) )) + scale_fill_manual(values=cbbPalette[4])  + theme_classic2() +   xlab("fullband PC") + ylab("functional gradient")+
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14,face="bold"), legend.position = "none") 
+
+ggsave('~/Documents/PD_fingerprinting/figure/2023_PCA_scatter_functional_gradient_VS_broadband.pdf', device = "pdf", width=5, height=5, dpi=800)
+
+
+
+permuted_index= read.csv('~/Documents/CAMCAN_outputs/neuromaps/permuted_indexes_of_dk_atlas.csv')
+permuted_index= permuted_index[,-1]
+permuted_index=permuted_index+1
+
+
+#gradient offset
+orig=cor.test(someData3$ICC, neuromaps$func_grad_01)
+permuted_corr=c()
+for (i in 1:1000){
+  
+  cor_temp=cor.test(someData3$ICC, neuromaps$func_grad_01[permuted_index[,i]])
+  permuted_corr= c(permuted_corr, cor_temp$estimate)
+  
+}
+
+sum(orig$estimate > permuted_corr)/1000
+# permuted p value for gradient = 0.0 !
+
+
+
+# fullband
+someData3= tidyr::tibble(df$region, x2, df$hemi)
+colnames(someData3)= c('region', 'ICC', 'hemi')
+
+someData3$ICC[someData3$ICC >0.5] =0.5
+someData3$ICC[someData3$ICC < -0.5] = -0.5
+
+someData3= someData3[!is.na(someData3$region),]
+ggplot(someData3) +
+  geom_brain(atlas = dk, 
+             position = position_brain(hemi ~ side),
+             aes(fill = ICC)) +
+  #viridis::scale_fill_viridis(option = 'magma',limits=c(-0.5, 0.5 ))+
+    scale_fill_gradient2(low = "#67309A", mid = "#FCF7F4", high = "#EC7A48", midpoint = 0.0, limits=c(-0.5, 0.5 )) +
+  theme_void() 
+
+ggsave('~/Documents/PD_fingerprinting/ICC_output/2023_ICC_broadband_change_new_AVG_PD_minus_CTL_new.pdf', device = "pdf")
+
+
+# Define X and Y data
+X=data.frame(broadband= x2)
+Y = neuromaps[,c(7:25)]
+
+corr_mat=corrplot::cor.mtest(cbind(X,Y))
+r_matrix=cor(cbind(X,Y))
+r_matrix=r_matrix[2:20, 1]
+p_val=corr_mat$p
+p_val=p_val[2:20,1]
+p_corrected=matrix(p.adjust(p_val, 'fdr'), nrow = 1)
+p_corrected_bin=p_corrected <0.05
+colnames(p_corrected_bin)= colnames(neuromaps[,c(7:25)])
+colnames(p_corrected)= colnames(neuromaps[,c(7:25)])
+
+bf_map=r_matrix
+
+for (j in 1:19){
+  bf = BayesFactor::correlationBF(y = Y[,j], x = X[,1])
+  bf_map[j]=exp(as.numeric(bf@bayesFactor[1]))
+}
+
+
+p_longData<-reshape2::melt(bf_map)
+p_longData$r_vals= round(r_matrix, 2)
+p_longData$value[p_longData$value>100]=100
+p_longData$Var1= factor(colnames(neuromaps[,c(7:25)]),levels = colnames(neuromaps[,c(7:25)]))
+
+ggplot(p_longData, aes(x = Var1, y = 1, fill=value)) + 
+  geom_tile(color = "gray") +  
+  scale_fill_gradient2(low = "#f5ec6c", mid = "white", high = "#F0792C", midpoint = 1.0, limits= c(0,100)) +
+  labs(x=" ", y="", title="") + geom_text(aes(label=r_vals), size = 7.5) +
+  theme_void() + theme(axis.text.x=element_text(size=15, angle=0, vjust=0.3),
+                       axis.text.y=element_text(size=15),
+                       plot.title=element_text(size=15))
+
+ggsave('~/Documents/PD_fingerprinting/figure/2023NEUROMAPS_bayesfactor.pdf', device = "pdf", width=20, height=2, dpi=800)
+
+
+
+
+#gradient offset
+orig=cor.test(x2, neuromaps$X5HT4)
+permuted_corr=c()
+for (i in 5001:6000){
+  
+  cor_temp=cor.test(x2, neuromaps$X5HT4[permuted_index[,i]])
+  permuted_corr= c(permuted_corr, cor_temp$estimate)
+  
+}
+
+sum(orig$estimate > permuted_corr)/1000 #0.004
+
+#gradient offset
+orig=cor.test(x2, neuromaps$CB1)
+permuted_corr=c()
+for (i in 6001:7000){
+  
+  cor_temp=cor.test(x2, neuromaps$CB1[permuted_index[,i]])
+  permuted_corr= c(permuted_corr, cor_temp$estimate)
+  
+}
+
+sum(orig$estimate > permuted_corr)/1000 #0.00
+
+#gradient offset
+orig=cor.test(x2, neuromaps$NET)
+permuted_corr=c()
+for (i in 7001:8000){
+  
+  cor_temp=cor.test(x2, neuromaps$CB1[permuted_index[,i]])
+  permuted_corr= c(permuted_corr, cor_temp$estimate)
+  
+}
+
+sum(orig$estimate < permuted_corr)/1000 #0.00
+
+
+
+#gradient offset
+orig=cor.test(x2, neuromaps$MOR)
+permuted_corr=c()
+for (i in 8001:9000){
+  
+  cor_temp=cor.test(x2, neuromaps$CB1[permuted_index[,i]])
+  permuted_corr= c(permuted_corr, cor_temp$estimate)
+  
+}
+
+sum(orig$estimate > permuted_corr)/1000 #0.005
+
+
+Y = neuromaps[,7:30]
+Y2= scale(Y)
+Y2= as.data.frame(Y2)
+
+df=read.csv('~/Documents/Alex_fingerprinting/PSD_ICC_orig_PD_new_PKD2.csv', header = FALSE, stringsAsFactors = FALSE)
+colnames(df)[1]='region'
+df_plot=df[,1:2]
+df_plot$hemi =''
+df_plot$hemi[seq(2,68,2)] ='right'
+df_plot$hemi[seq(1,67,2)] ='left'
+df_plot$receptor=Y2$X5HT4
+
+someData2= df_plot
+colnames(someData2)[1]='region'
+colnames(someData2)[3]='hemi'
+
+someData2$receptor[someData2$receptor>2]=2
+someData2$receptor[someData2$receptor< -2]= -2
+
+ggplot(someData2) +
+  geom_brain(atlas = dk, 
+             position = position_brain(hemi ~ side),
+             aes(fill = receptor)) +
+  #scale_fill_distiller(palette = "RdBu"
+  #                     , limits = c(0.4, 0.9))+
+  viridis::scale_fill_viridis(option = 'rocket', limits = c(-2, 2))+ theme_void() 
+
+ggsave('~/Documents/PD_fingerprinting/figure/2023_DEC_NEUROMAPS_X5HT4_receptor_map.pdf', device = "pdf")
+
+df_plot$receptor=Y2$CB1
+
+someData2= df_plot
+colnames(someData2)[1]='region'
+colnames(someData2)[3]='hemi'
+
+someData2$receptor[someData2$receptor>2]=2
+someData2$receptor[someData2$receptor< -2]= -2
+
+ggplot(someData2) +
+  geom_brain(atlas = dk, 
+             position = position_brain(hemi ~ side),
+             aes(fill = receptor)) +
+  #scale_fill_distiller(palette = "RdBu"
+  #                     , limits = c(0.4, 0.9))+
+  viridis::scale_fill_viridis(option = 'rocket', limits = c(-2, 2))+ theme_void() 
+
+ggsave('~/Documents/PD_fingerprinting/figure/2023_DEC_NEUROMAPS_CB1_receptor_map.pdf', device = "pdf")
+
+
+
+df_plot$receptor=Y2$NET
+
+someData2= df_plot
+colnames(someData2)[1]='region'
+colnames(someData2)[3]='hemi'
+
+someData2$receptor[someData2$receptor>2]=2
+someData2$receptor[someData2$receptor< -2]= -2
+
+ggplot(someData2) +
+  geom_brain(atlas = dk, 
+             position = position_brain(hemi ~ side),
+             aes(fill = receptor)) +
+  #scale_fill_distiller(palette = "RdBu"
+  #                     , limits = c(0.4, 0.9))+
+  viridis::scale_fill_viridis(option = 'rocket', limits = c(-2, 2))+ theme_void() 
+
+ggsave('~/Documents/PD_fingerprinting/figure/2023_DEC_NEUROMAPS_NET_receptor_map.pdf', device = "pdf")
+
+
+
+df_plot$receptor=Y2$MOR
+
+someData2= df_plot
+colnames(someData2)[1]='region'
+colnames(someData2)[3]='hemi'
+
+someData2$receptor[someData2$receptor>2]=2
+someData2$receptor[someData2$receptor< -2]= -2
+
+ggplot(someData2) +
+  geom_brain(atlas = dk, 
+             position = position_brain(hemi ~ side),
+             aes(fill = receptor)) +
+  #scale_fill_distiller(palette = "RdBu"
+  #                     , limits = c(0.4, 0.9))+
+  viridis::scale_fill_viridis(option = 'rocket', limits = c(-2, 2))+ theme_void() 
+
+ggsave('~/Documents/PD_fingerprinting/figure/2023_DEC_NEUROMAPS_MOR_receptor_map.pdf', device = "pdf")
+
+
+
+```
+
+``` {r artifacts length}
+
+# read data and compute data for demographic table
+data=read.csv('~/Documents/PD_fingerprinting/QPN_demo_compiled.csv', stringsAsFactors = FALSE)
+
+
+t.test(data$HLU[data$Group == 'Control'], data$HLU[data$Group == 'Parkinson'])
+t.test(data$EOG[data$Group == 'Control'], data$EOG[data$Group == 'Parkinson'])
+t.test(data$ECG[data$Group == 'Control'], data$ECG[data$Group == 'Parkinson'])
+
+
+```
+
+
+
+
+```{r DONE Relate spectra to UPDRS & MOCA }
+
+cbbPalette <- c( '#808080',"#90319D","#E25987","#FFBF00","#3A3AA4", "#31CD71", "#F0792C", "#6C3ABF")
+
+# read data and compute data for demographic table
+data=read.csv('~/Documents/PD_fingerprinting/QPN_demo_compiled.csv', stringsAsFactors = FALSE)
+
+target= read.csv('~/Documents/PD_fingerprinting/features_4_fingeprinting_target.csv' )
+
+database= read.csv('~/Documents/PD_fingerprinting/features_4_fingeprinting_database.csv' )
+
+target=target[,-1]
+database=database[,-1]
+
+roi_index= (451*(59-1)+1):(451*(59-1)+451)
+
+target_LSP= target[,roi_index]
+database_LSP= database[,roi_index]
+
+target_LSP= (target_LSP+database_LSP)/2
+
+
+X=data.frame(delta= rowMeans(target_LSP[,1:12]),theta= rowMeans(target_LSP[,13:25]),alpha= rowMeans(target_LSP[,25:39]),beta= rowMeans(target_LSP[,40:90]), gamma= rowMeans(target_LSP[,91:150]), hgamma= rowMeans(target_LSP[,151:451]))
+
+
+demo_data=cbind(data, X)
+
+demo_data=demo_data[demo_data$Group== 'Parkinson',]
+demo_data$updrs2_binned=demo_data$updrs2> median(demo_data$updrs2, na.rm = TRUE)
+demo_data$moca_bin= demo_data$moca2 >  24
+
+lm1= lm(delta ~ Age + Education_coded + DiseaseDur+ HLU+ updrs2_binned* moca_bin, demo_data)
+summary(lm1)
+
+lm2= lm(theta ~  Age + Education_coded + DiseaseDur+ HLU+updrs2_binned + moca_bin, demo_data)
+summary(lm2)
+
+lm3= lm(alpha ~ Age + Education_coded + DiseaseDur+ HLU+ updrs2_binned* moca_bin, demo_data)
+summary(lm3)
+
+lm4= lm(beta ~  Age + Education_coded + DiseaseDur+ HLU+updrs2_binned* moca_bin, demo_data)
+summary(lm4)
+
+lm4= lm(beta ~ Age + Education_coded + DiseaseDur+ HLU+moca_bin + updrs2_binned , demo_data)
+summary(lm4)
+
+lm5= lm(gamma ~ updrs2_binned* moca_bin, demo_data)
+summary(lm5)
+
+
+demo_data=cbind(data, X)
+
+lm3= lm(delta ~ Group, demo_data)
+summary(lm3)
+
+lm3= lm(theta ~ Group, demo_data)
+summary(lm3)
+
+lm3= lm(alpha ~ Group, demo_data)
+summary(lm3)
+
+lm3= lm(beta ~ Group, demo_data)
+summary(lm3)
+
+lm3= lm(gamma ~ Group, demo_data)
+summary(lm3)
+
+
+
+```
+
