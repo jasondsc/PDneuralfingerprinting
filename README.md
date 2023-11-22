@@ -1,4 +1,3 @@
-[![DOI](https://zenodo.org/badge/449755672.svg)](XXXXX)
 
 # PDneuralfingerprinting
 
@@ -17,7 +16,9 @@ Overview of fingerprinting pipeline:
 
 Code is organized in such a way that all the fingerprinting and ICC analyses are done within the python environment and saved to a csv
 
-This is then used in R to run additional analyses (e.g., relate the spatial distribution of ICC features to maps obtained from the neuromaps toolbox).
+This is then used in R to run additional analyses (e.g., relate the spatial distribution of ICC features to maps obtained from the neuromaps toolbox--see python code for annotionas).
+
+Preporcessing of the MEG data for the Prevent-AD and PD sample was for another project (see [GitHub](https://github.com/aiwiesman/QPN_Slowing) and [paper](https://www.sciencedirect.com/science/article/pii/S0301008223001399) for details)
 
 See XXXXX for details.
 
