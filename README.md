@@ -1,7 +1,7 @@
 
 # PDneuralfingerprinting
 
-Code associated with the with the XXXXXXXXX publication.
+Code associated with the with [this preprint](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC9934726/).
 
 # Information
 
@@ -20,7 +20,7 @@ This is then used in R to run additional analyses (e.g., relate the spatial dist
 
 Preporcessing of the MEG data for the Prevent-AD and PD sample was for another project (see [GitHub](https://github.com/aiwiesman/QPN_Slowing) and [paper](https://www.sciencedirect.com/science/article/pii/S0301008223001399) for details)
 
-See XXXXX for details.
+See [this preprint](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC9934726/) for details.
 
 Please contact the authors of this project for any questions and suggestions.
 
